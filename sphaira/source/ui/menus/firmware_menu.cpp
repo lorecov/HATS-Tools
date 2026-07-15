@@ -15,7 +15,6 @@
 #include "hats_version.hpp"
 #include "threaded_file_transfer.hpp"
 #include "ams_su.h"
-#include "utils/utils.hpp"
 
 #include <yyjson.h>
 #include <cstring>
@@ -107,6 +106,27 @@ Result InstallValidatedFirmware(ProgressBox* pbox, bool use_exfat, const fs::FsP
 
     pbox->NewTransfer("Applying system update...");
     return amssuApplyPreparedUpdate();
+}
+
+Result RequestFirmwareReboot() {
+    Result rc = appletRequestToReboot();
+    log_write("firmware: applet reboot result: 0x%X\n", rc);
+    if (R_SUCCEEDED(rc)) {
+        while (true) svcSleepThread(86400000000000ULL);
+    }
+
+    rc = spsmInitialize();
+    log_write("firmware: spsm initialize result: 0x%X\n", rc);
+    if (R_FAILED(rc)) return rc;
+
+    rc = spsmShutdown(true);
+    log_write("firmware: spsm reboot result: 0x%X\n", rc);
+    if (R_SUCCEEDED(rc)) {
+        while (true) svcSleepThread(86400000000000ULL);
+    }
+
+    spsmExit();
+    return rc;
 }
 
 std::string GetFirmwareTargetName() {
@@ -962,7 +982,10 @@ void FirmwareMenu::InstallFirmware(const std::string& display_name, const fs::Fs
                 "Firmware update applied successfully.\n\nReboot now?",
                 "Later"_i18n, "Reboot"_i18n, 1,
                 [](auto op_index) {
-                    if (op_index && *op_index == 1) utils::requestForcedReboot();
+                    if (op_index && *op_index == 1) {
+                        const Result rc = RequestFirmwareReboot();
+                        App::Push<ErrorBox>(rc, "Failed to reboot after firmware update");
+                    }
                 });
         }, false);
 }
