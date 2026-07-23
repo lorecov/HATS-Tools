@@ -109,13 +109,7 @@ Result InstallValidatedFirmware(ProgressBox* pbox, bool use_exfat, const fs::FsP
 }
 
 Result RequestFirmwareReboot() {
-    Result rc = appletRequestToReboot();
-    log_write("firmware: applet reboot result: 0x%X\n", rc);
-    if (R_SUCCEEDED(rc)) {
-        while (true) svcSleepThread(86400000000000ULL);
-    }
-
-    rc = spsmInitialize();
+    Result rc = spsmInitialize();
     log_write("firmware: spsm initialize result: 0x%X\n", rc);
     if (R_FAILED(rc)) return rc;
 
@@ -330,7 +324,34 @@ std::string ExtractSupportedFirmware(const std::string& body) {
     return "";
 }
 
+bool ReadInstalledHatsSupport(HatsSupportInfo* out) {
+    FILE* file = std::fopen("/HATS_VERSION.txt", "r");
+    if (!file) {
+        return false;
+    }
+
+    std::string body;
+    char line[512];
+    while (std::fgets(line, sizeof(line), file)) {
+        body += line;
+    }
+    std::fclose(file);
+
+    out->supported_firmware = ExtractSupportedFirmware(body);
+    if (out->supported_firmware.empty()) {
+        return false;
+    }
+
+    out->release_name = sphaira::hats::getHatsVersion();
+    return true;
+}
+
 Result FetchLatestHatsSupport(ProgressBox* pbox, HatsSupportInfo* out) {
+    pbox->NewTransfer("Checking installed HATS support...");
+    if (ReadInstalledHatsSupport(out)) {
+        return 0;
+    }
+
     auto app = App::GetApp();
     const std::string pack_url = app->m_pack_url.Get();
 
@@ -927,14 +948,20 @@ void FirmwareMenu::PromptInstallFirmware(const std::string& display_name, const 
 void FirmwareMenu::CheckHatsFirmwareSupport(const std::string& target_version, const std::function<void()>& callback, const std::function<void()>& cancel_callback) {
     auto support = std::make_shared<HatsSupportInfo>();
     App::Push<ProgressBox>(0, "Checking"_i18n, "HATS compatibility",
-        [support](auto pbox) -> Result {
-            return FetchLatestHatsSupport(pbox, support.get());
+        [target_version, support](auto pbox) -> Result {
+            R_TRY(FetchLatestHatsSupport(pbox, support.get()));
+            if (!isVersionNewer(target_version, support->supported_firmware)) {
+                pbox->NewTransfer("HATS compatibility verified: up to " + support->supported_firmware);
+                svcSleepThread(1'000'000'000);
+            }
+            return 0;
         },
         [target_version, callback, cancel_callback, support](Result rc) {
             if (R_FAILED(rc)) {
-                std::string message = "Could not verify HATS support for firmware " + target_version + ".\n\n";
-                message += "Continue only if you are sure a compatible HATS pack is available.";
-                App::Push<OptionBox>(message, "Cancel"_i18n, "Force"_i18n, 0,
+                std::string message = "Cannot verify HATS support for firmware " + target_version + ".\n";
+                message += "Offline support data is missing from HATS_VERSION.txt.\n";
+                message += "Connect to GitHub or update HATS before continuing.";
+                App::Push<OptionBox>(message, "Cancel"_i18n, "Continue"_i18n, 0,
                     [callback, cancel_callback](auto op_index) {
                         if (op_index && *op_index == 1) {
                             callback();
