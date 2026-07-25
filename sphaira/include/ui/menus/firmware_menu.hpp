@@ -49,6 +49,7 @@ private:
     void CheckHatsFirmwareSupport(const std::string& target_version, const std::function<void()>& callback, const std::function<void()>& cancel_callback = [](){});
     void UpdateSubheading();
     bool IsDowngrade(const std::string& target_version);
+    bool HasDifferentFuseCount(const std::string& target_version);
     int GetFuseCount(const std::string& version);
 
 private:

@@ -788,16 +788,17 @@ void FirmwareMenu::DownloadFirmware() {
         return;
     }
 
-    bool is_downgrade = IsDowngrade(release.tag_name);
+    const bool is_downgrade = IsDowngrade(release.tag_name);
+    const bool has_different_fuse_count = HasDifferentFuseCount(release.tag_name);
 
     std::string message = "Download firmware " + display_name + "?\n\n";
     message += "Firmware will be extracted to /firmware.";
-
-    if (is_downgrade) {
-        message = "WARNING: This is a DOWNGRADE!\n\n";
+    if (has_different_fuse_count) {
+        message = is_downgrade ? "WARNING: This is a DOWNGRADE!\n\n" : "WARNING: Firmware fuse count differs!\n\n";
         message += "Current: " + m_current_firmware + "\n";
-        message += "Target: " + display_name + "\n\n";
-        message += "Downgrading firmware can cause issues.\nProceed with caution!";
+        message += "Target: " + release.tag_name + "\n\n";
+        message += "Download firmware " + display_name + "?\n\n";
+        message += "Firmware will be extracted to /firmware.";
     }
 
     App::Push<OptionBox>(
@@ -923,6 +924,12 @@ void FirmwareMenu::PromptInstallFirmware(const std::string& display_name, const 
 
             const auto show_install_prompt = [this, display_name, path, version, use_exfat]() {
                 std::string message = "Install firmware " + version + " on " + GetFirmwareTargetName() + "?\n\n";
+                if (HasDifferentFuseCount(version)) {
+                    message = IsDowngrade(version) ? "WARNING: This is a DOWNGRADE!\n\n" : "WARNING: Firmware fuse count differs!\n\n";
+                    message += "Current: " + m_current_firmware + "\n";
+                    message += "Target: " + version + "\n\n";
+                    message += "Install firmware " + version + " on " + GetFirmwareTargetName() + "?\n\n";
+                }
                 message += use_exfat ? "FAT32 + exFAT support\n" : "FAT32 support only\n";
                 message += "Do not power off the console during installation.";
                 App::Push<OptionBox>(message, "Cancel"_i18n, "Install"_i18n, 1,
@@ -1033,6 +1040,19 @@ bool FirmwareMenu::IsDowngrade(const std::string& target_version) {
     }
     // Fallback to version comparison if fuse data not available
     return isVersionLower(target_version, m_current_firmware);
+}
+
+bool FirmwareMenu::HasDifferentFuseCount(const std::string& target_version) {
+    if (m_current_fuse_count < 0) {
+        return IsDowngrade(target_version);
+    }
+
+    const int target_fuses = GetFuseCount(target_version);
+    if (target_fuses < 0) {
+        return IsDowngrade(target_version);
+    }
+
+    return target_fuses != m_current_fuse_count;
 }
 
 } // namespace sphaira::ui::menu::hats

@@ -107,6 +107,7 @@ auto OptionBox::Draw(NVGcontext* vg, Theme* theme) -> void {
     gfx::drawRect(vg, m_pos, theme->GetColour(ThemeEntryID_POPUP), 5);
 
     nvgSave(vg);
+    nvgScissor(vg, m_pos.x, m_pos.y, m_pos.w, OPTION_BOX_BUTTON_Y - 2.f);
     nvgTextLineHeight(vg, 1.5);
     if (m_image) {
         Vec4 image{m_pos};
