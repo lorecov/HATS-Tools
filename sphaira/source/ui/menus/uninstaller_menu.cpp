@@ -687,7 +687,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         "Fetch Versions (Check Updates)", 
         [this]() {
             if (m_manifest.components.empty()) {
-                App::Push<ui::ErrorBox>("No custom components available.");
+                App::Notify("No custom components available.");
                 return;
             }
             // TODO: Step 4 - Implementazione Fetch Versions
@@ -699,7 +699,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         "Update All Components", 
         [this]() {
             if (m_manifest.components.empty()) {
-                App::Push<ui::ErrorBox>("No custom components available.");
+                App::Notify("No custom components available.");
                 return;
             }
             // TODO: Step 4 - Implementazione Update All
@@ -711,7 +711,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         "Update Selected Components", 
         [this]() {
             if (GetSelectedCount() == 0) {
-                App::Push<ui::ErrorBox>("No components selected for update.");
+                App::Notify("No components selected for update.");
                 return;
             }
             // TODO: Step 4 - Implementazione Update Selected
@@ -731,7 +731,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         "Modify Selected Component", 
         [this]() {
             if (GetSelectedCount() != 1) {
-                App::Push<ui::ErrorBox>("Please select exactly one component to modify.");
+                App::Notify("Please select exactly one component to modify.");
                 return;
             }
             // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
