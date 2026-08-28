@@ -681,7 +681,7 @@ void UninstallerMenu::DeselectAll() {
 }
 
 void UninstallerMenu::OpenCustomToolsSidebar() {
-    auto options = std::make_unique<ui::Sidebar>("Custom Tools", "Component Manager Options", ui::Sidebar::Side::RIGHT);
+    auto options = std::make_unique<ui::Sidebar>("Custom Tools", "", ui::Sidebar::Side::RIGHT);
     
     options->Add(std::make_unique<ui::SidebarEntryCallback>(
         "Fetch Versions (Check Updates)", 
