@@ -13,6 +13,18 @@ namespace sphaira::manifest {
 
 namespace {
 
+inline const char* get_manifest_path(bool is_custom) {
+    return is_custom ? MANIFEST_PATH_CUSTOM : MANIFEST_PATH;
+}
+
+inline const char* get_disabled_path(bool is_custom) {
+    return is_custom ? DISABLED_COMPONENTS_PATH_CUSTOM : DISABLED_COMPONENTS_PATH;
+}
+
+inline const char* get_disabled_dir(bool is_custom) {
+    return is_custom ? DISABLED_COMPONENTS_DIR_CUSTOM : DISABLED_COMPONENTS_DIR;
+}
+
 void from_json(yyjson_val* json, Component& e) {
     // Direct yyjson parsing instead of macros to avoid potential issues
     if (auto val = yyjson_obj_get(json, "name")) {
@@ -111,7 +123,7 @@ fs::FsPath normalize_path(const std::string& file) {
     return path;
 }
 
-fs::FsPath disabled_path_for(const std::string& id, const std::string& file) {
+fs::FsPath disabled_path_for(const std::string& id, const std::string& file, bool is_custom) {
     auto source_path = normalize_path(file);
     const char* relative = source_path.s;
     while (*relative == '/') {
@@ -119,13 +131,13 @@ fs::FsPath disabled_path_for(const std::string& id, const std::string& file) {
     }
 
     fs::FsPath path;
-    std::snprintf(path, sizeof(path), "%s/%s/%s", DISABLED_COMPONENTS_DIR, id.c_str(), relative);
+    std::snprintf(path, sizeof(path), "%s/%s/%s", get_disabled_dir(is_custom), id.c_str(), relative);
     return path;
 }
 
-fs::FsPath disabled_root_for(const std::string& id) {
+fs::FsPath disabled_root_for(const std::string& id, bool is_custom) {
     fs::FsPath path;
-    std::snprintf(path, sizeof(path), "%s/%s", DISABLED_COMPONENTS_DIR, id.c_str());
+    std::snprintf(path, sizeof(path), "%s/%s", get_disabled_dir(is_custom), id.c_str());
     return path;
 }
 
@@ -151,10 +163,11 @@ bool Component::isProtected() const {
     return isProtectedComponent(id);
 }
 
-bool load(Manifest& out) {
-    auto doc = yyjson_read_file(MANIFEST_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
+bool load(Manifest& out, bool is_custom) {
+    const char* path = get_manifest_path(is_custom);
+    auto doc = yyjson_read_file(path, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!doc) {
-        log_write("manifest: failed to read %s\n", MANIFEST_PATH);
+        log_write("manifest: failed to read %s\n", path);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(doc));
@@ -201,11 +214,12 @@ bool load(Manifest& out) {
         from_json(components_val, out.components);
     }
 
-    log_write("manifest: loaded %zu components from %s\n", out.components.size(), MANIFEST_PATH);
+    log_write("manifest: loaded %zu components from %s\n", out.components.size(), path);
     return true;
 }
 
-bool save(const Manifest& m) {
+bool save(const Manifest& m, bool is_custom) {
+    const char* path = get_manifest_path(is_custom);
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     if (!doc) {
         return false;
@@ -232,19 +246,20 @@ bool save(const Manifest& m) {
 
     // Write to file
     yyjson_write_err err;
-    bool success = yyjson_mut_write_file(MANIFEST_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err);
+    bool success = yyjson_mut_write_file(path, doc, YYJSON_WRITE_PRETTY, nullptr, &err);
 
     if (!success) {
-        log_write("manifest: failed to write %s: %s\n", MANIFEST_PATH, err.msg);
+        log_write("manifest: failed to write %s: %s\n", path, err.msg);
     } else {
-        log_write("manifest: saved %zu components to %s\n", m.components.size(), MANIFEST_PATH);
+        log_write("manifest: saved %zu components to %s\n", m.components.size(), path);
     }
 
     return success;
 }
 
-bool exists() {
-    FILE* f = fopen(MANIFEST_PATH, "r");
+bool exists(bool is_custom) {
+    const char* path = get_manifest_path(is_custom);
+    FILE* f = fopen(path, "r");
     if (f) {
         fclose(f);
         return true;
@@ -252,12 +267,13 @@ bool exists() {
     return false;
 }
 
-bool loadDisabled(DisabledComponents& out) {
+bool loadDisabled(DisabledComponents& out, bool is_custom) {
     out.components.clear();
+    const char* path = get_disabled_path(is_custom);
 
-    auto doc = yyjson_read_file(DISABLED_COMPONENTS_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
+    auto doc = yyjson_read_file(path, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!doc) {
-        log_write("manifest: no disabled components metadata at %s\n", DISABLED_COMPONENTS_PATH);
+        log_write("manifest: no disabled components metadata at %s\n", path);
         return true;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(doc));
@@ -273,17 +289,18 @@ bool loadDisabled(DisabledComponents& out) {
     }
 
     log_write("manifest: loaded %zu disabled components from %s\n",
-              out.components.size(), DISABLED_COMPONENTS_PATH);
+              out.components.size(), path);
     return true;
 }
 
-bool saveDisabled(const DisabledComponents& disabled) {
+bool saveDisabled(const DisabledComponents& disabled, bool is_custom) {
     fs::FsNativeSd fs;
     if (R_FAILED(fs.GetFsOpenResult())) {
         return false;
     }
 
-    fs.CreateDirectoryRecursivelyWithPath(DISABLED_COMPONENTS_PATH);
+    const char* path = get_disabled_path(is_custom);
+    fs.CreateDirectoryRecursivelyWithPath(path);
 
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     if (!doc) {
@@ -302,13 +319,13 @@ bool saveDisabled(const DisabledComponents& disabled) {
     }
 
     yyjson_write_err err;
-    bool success = yyjson_mut_write_file(DISABLED_COMPONENTS_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err);
+    bool success = yyjson_mut_write_file(path, doc, YYJSON_WRITE_PRETTY, nullptr, &err);
 
     if (!success) {
-        log_write("manifest: failed to write %s: %s\n", DISABLED_COMPONENTS_PATH, err.msg);
+        log_write("manifest: failed to write %s: %s\n", path, err.msg);
     } else {
         log_write("manifest: saved %zu disabled components to %s\n",
-                  disabled.components.size(), DISABLED_COMPONENTS_PATH);
+                  disabled.components.size(), path);
     }
 
     return success;
@@ -333,12 +350,12 @@ std::vector<Component> getComponents(const Manifest& m) {
     return result;
 }
 
-std::vector<Component> getUninstallableComponents(const Manifest& m) {
+std::vector<Component> getUninstallableComponents(const Manifest& m, bool is_custom) {
     std::vector<Component> result;
     result.reserve(m.components.size());
 
     for (const auto& [id, comp] : m.components) {
-        if (!isProtectedComponent(id)) {
+        if (!isProtectedComponent(id, is_custom)) {
             result.push_back(comp);
         }
     }
@@ -354,8 +371,8 @@ std::vector<Component> getUninstallableComponents(const Manifest& m) {
     return result;
 }
 
-bool removeComponent(Manifest& m, const std::string& id, fs::Fs* fs) {
-    if (isProtectedComponent(id)) {
+bool removeComponent(Manifest& m, const std::string& id, fs::Fs* fs, bool is_custom) {
+    if (isProtectedComponent(id, is_custom)) {
         log_write("[UNINSTALL] cannot remove protected component: %s\n", id.c_str());
         return false;
     }
@@ -421,8 +438,8 @@ bool removeComponent(Manifest& m, const std::string& id, fs::Fs* fs) {
     return true;  // Return true even if some files failed to delete
 }
 
-bool disableComponent(Manifest& m, DisabledComponents& disabled, const std::string& id, fs::Fs* fs) {
-    if (isProtectedComponent(id)) {
+bool disableComponent(Manifest& m, DisabledComponents& disabled, const std::string& id, fs::Fs* fs, bool is_custom) {
+    if (isProtectedComponent(id, is_custom)) {
         log_write("[DISABLE] cannot disable protected component: %s\n", id.c_str());
         return false;
     }
@@ -442,9 +459,10 @@ bool disableComponent(Manifest& m, DisabledComponents& disabled, const std::stri
     log_write("[DISABLE] disabling component %s (%s) with %zu files\n",
               id.c_str(), comp.name.c_str(), comp.files.size());
 
-    Result rc = fs->CreateDirectoryRecursively(DISABLED_COMPONENTS_DIR);
+    const char* disabled_dir = get_disabled_dir(is_custom);
+    Result rc = fs->CreateDirectoryRecursively(disabled_dir);
     if (R_FAILED(rc)) {
-        log_write("[DISABLE] failed to create disabled components dir (error: 0x%X)\n", rc);
+        log_write("[DISABLE] failed to create disabled components dir %s (error: 0x%X)\n", disabled_dir, rc);
         return false;
     }
 
@@ -455,7 +473,7 @@ bool disableComponent(Manifest& m, DisabledComponents& disabled, const std::stri
 
     for (const auto& file : comp.files) {
         const auto source = normalize_path(file);
-        const auto destination = disabled_path_for(id, file);
+        const auto destination = disabled_path_for(id, file, is_custom);
 
         if (is_shared_file(m, id, file)) {
             log_write("[DISABLE] skipping shared file %s\n", source.s);
@@ -528,7 +546,7 @@ bool disableComponent(Manifest& m, DisabledComponents& disabled, const std::stri
     return true;
 }
 
-bool enableComponent(Manifest& m, DisabledComponents& disabled, const std::string& id, fs::Fs* fs) {
+bool enableComponent(Manifest& m, DisabledComponents& disabled, const std::string& id, fs::Fs* fs, bool is_custom) {
     auto it = disabled.components.find(id);
     if (it == disabled.components.end()) {
         log_write("[ENABLE] disabled component not found: %s\n", id.c_str());
@@ -547,7 +565,7 @@ bool enableComponent(Manifest& m, DisabledComponents& disabled, const std::strin
     std::vector<std::pair<fs::FsPath, fs::FsPath>> moved_paths;
 
     for (const auto& file : comp.files) {
-        const auto source = disabled_path_for(id, file);
+        const auto source = disabled_path_for(id, file, is_custom);
         const auto destination = normalize_path(file);
 
         const bool is_file = fs->FileExists(source);
@@ -615,14 +633,14 @@ bool enableComponent(Manifest& m, DisabledComponents& disabled, const std::strin
     return true;
 }
 
-bool deleteDisabledComponent(DisabledComponents& disabled, const std::string& id, fs::Fs* fs) {
+bool deleteDisabledComponent(DisabledComponents& disabled, const std::string& id, fs::Fs* fs, bool is_custom) {
     auto it = disabled.components.find(id);
     if (it == disabled.components.end()) {
         log_write("[DELETE DISABLED] disabled component not found: %s\n", id.c_str());
         return false;
     }
 
-    const auto root = disabled_root_for(id);
+    const auto root = disabled_root_for(id, is_custom);
     if (fs->DirExists(root)) {
         Result rc = fs->DeleteDirectoryRecursively(root);
         if (R_FAILED(rc)) {
@@ -636,11 +654,11 @@ bool deleteDisabledComponent(DisabledComponents& disabled, const std::string& id
     return true;
 }
 
-int removeComponents(Manifest& m, const std::vector<std::string>& ids, fs::Fs* fs) {
+int removeComponents(Manifest& m, const std::vector<std::string>& ids, fs::Fs* fs, bool is_custom) {
     log_write("[UNINSTALL] batch removing %zu components\n", ids.size());
     int count = 0;
     for (const auto& id : ids) {
-        if (removeComponent(m, id, fs)) {
+        if (removeComponent(m, id, fs, is_custom)) {
             count++;
         }
     }
@@ -648,7 +666,12 @@ int removeComponents(Manifest& m, const std::vector<std::string>& ids, fs::Fs* f
     return count;
 }
 
-bool isProtectedComponent(const std::string& id) {
+bool isProtectedComponent(const std::string& id, bool is_custom) {
+    // Custom tab does not contain any system components
+    if (is_custom) {
+        return false;
+    }
+
     // God Mode bypasses all component protections
     if (sphaira::App::GetGodModeEnabled()) {
         return false;
