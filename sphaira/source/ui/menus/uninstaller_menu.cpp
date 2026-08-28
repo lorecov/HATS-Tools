@@ -26,13 +26,16 @@ enum class ComponentOperation {
 auto ProcessComponents(ProgressBox* pbox, manifest::Manifest& manifest,
                        manifest::DisabledComponents& disabled,
                        const std::vector<std::string>& ids,
-                       ComponentOperation operation) -> Result {
-    log_write("[COMPONENTS] starting operation %d on %zu components\n",
-              static_cast<int>(operation), ids.size());
+                       ComponentOperation operation,
+                       ComponentTab tab) -> Result {
+    log_write("[COMPONENTS] starting operation %d on %zu components (tab: %s)\n",
+              static_cast<int>(operation), ids.size(),
+              tab == ComponentTab::Custom ? "Custom" : "Hats");
 
     fs::FsNativeSd fs;
     R_TRY(fs.GetFsOpenResult());
 
+    const bool is_custom = (tab == ComponentTab::Custom);
     size_t total = ids.size();
     size_t current = 0;
     int success_count = 0;
@@ -66,16 +69,16 @@ auto ProcessComponents(ProgressBox* pbox, manifest::Manifest& manifest,
         bool success{};
         switch (operation) {
             case ComponentOperation::Disable:
-                success = manifest::disableComponent(manifest, disabled, id, static_cast<fs::Fs*>(&fs));
+                success = manifest::disableComponent(manifest, disabled, id, static_cast<fs::Fs*>(&fs), is_custom);
                 break;
             case ComponentOperation::Enable:
-                success = manifest::enableComponent(manifest, disabled, id, static_cast<fs::Fs*>(&fs));
+                success = manifest::enableComponent(manifest, disabled, id, static_cast<fs::Fs*>(&fs), is_custom);
                 break;
             case ComponentOperation::DeleteInstalled:
-                success = manifest::removeComponent(manifest, id, static_cast<fs::Fs*>(&fs));
+                success = manifest::removeComponent(manifest, id, static_cast<fs::Fs*>(&fs), is_custom);
                 break;
             case ComponentOperation::DeleteDisabled:
-                success = manifest::deleteDisabledComponent(disabled, id, static_cast<fs::Fs*>(&fs));
+                success = manifest::deleteDisabledComponent(disabled, id, static_cast<fs::Fs*>(&fs), is_custom);
                 break;
         }
 
@@ -91,12 +94,12 @@ auto ProcessComponents(ProgressBox* pbox, manifest::Manifest& manifest,
     log_write("[COMPONENTS] operation summary: %d succeeded, %d failed\n",
               success_count, failed_count);
 
-    if (!manifest::save(manifest)) {
+    if (!manifest::save(manifest, is_custom)) {
         log_write("[COMPONENTS] failed to save manifest\n");
         return 0x1;
     }
 
-    if (!manifest::saveDisabled(disabled)) {
+    if (!manifest::saveDisabled(disabled, is_custom)) {
         log_write("[COMPONENTS] failed to save disabled components\n");
         return 0x1;
     }
@@ -138,6 +141,12 @@ UninstallerMenu::UninstallerMenu() : MenuBase{"Component Manager", MenuFlag_None
         }}),
         std::make_pair(Button::R, Action{"View"_i18n, [this](){
             SwitchView();
+        }}),
+        std::make_pair(Button::L2, Action{"", [this](){
+            SwitchTab(ComponentTab::Hats);
+        }}),
+        std::make_pair(Button::R2, Action{"", [this](){
+            SwitchTab(ComponentTab::Custom);
         }})
     );
 
@@ -167,8 +176,73 @@ void UninstallerMenu::Update(Controller* controller, TouchInfo* touch) {
     }
 }
 
+void UninstallerMenu::DrawTabs(NVGcontext* vg, Theme* theme) {
+    const float y = GetY() + 38.f;
+    const float height = 42.f;
+    const float start_x = 75.f;
+    const float total_w = 1220.f - 150.f;
+    const float tab_w = (total_w - 20.f) / 2.f;
+
+    // --- TAB 1: HATS ---
+    float hats_x = start_x;
+    bool hats_active = (m_tab == ComponentTab::Hats);
+
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, hats_x, y, tab_w, height, 6.f);
+    nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
+    nvgFill(vg);
+    if (hats_active) {
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
+        nvgFill(vg);
+    }
+
+    nvgStrokeWidth(vg, hats_active ? 2.f : 1.f);
+    nvgStrokeColor(vg, hats_active ? theme->GetColour(ThemeEntryID_TEXT_SELECTED) 
+                                   : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
+    nvgStroke(vg);
+
+    gfx::drawTextArgs(vg, hats_x + 20.f, y + height / 2.f, 22.f,
+                      NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(ThemeEntryID_TEXT_INFO),
+                      "%s", gfx::getButton(sphaira::Button::L2));
+
+    gfx::drawTextArgs(vg, hats_x + tab_w / 2.f, y + height / 2.f, 20.f,
+                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(hats_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT),
+                      "HATS");
+
+    // --- TAB 2: Custom ---
+    float custom_x = start_x + tab_w + 20.f;
+    bool custom_active = (m_tab == ComponentTab::Custom);
+
+    nvgBeginPath(vg);
+    nvgRoundedRect(vg, custom_x, y, tab_w, height, 6.f);
+    nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
+    nvgFill(vg);
+    if (custom_active) {
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
+        nvgFill(vg);
+    }
+
+    nvgStrokeWidth(vg, custom_active ? 2.f : 1.f);
+    nvgStrokeColor(vg, custom_active ? theme->GetColour(ThemeEntryID_TEXT_SELECTED) 
+                                     : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
+    nvgStroke(vg);
+
+    gfx::drawTextArgs(vg, custom_x + tab_w / 2.f, y + height / 2.f, 20.f,
+                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(custom_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT),
+                      "Custom");
+
+    gfx::drawTextArgs(vg, custom_x + tab_w - 20.f, y + height / 2.f, 22.f,
+                      NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(ThemeEntryID_TEXT_INFO),
+                      "%s", gfx::getButton(sphaira::Button::R2));
+}
+
 void UninstallerMenu::Draw(NVGcontext* vg, Theme* theme) {
     MenuBase::Draw(vg, theme);
+    DrawTabs(vg, theme);
 
     // Draw warning header
     const bool god_mode = App::GetGodModeEnabled();
@@ -182,14 +256,14 @@ void UninstallerMenu::Draw(NVGcontext* vg, Theme* theme) {
         theme->GetColour(ThemeEntryID_TEXT_INFO),
         m_view == ComponentView::Installed ? "Installed" : "Disabled");
 
-    // Draw selection count
-    size_t selected = GetSelectedCount();
-    if (selected > 0) {
-        gfx::drawTextArgs(vg, 80.f, GetY() + 32.f, 18.f,
-            NVG_ALIGN_LEFT | NVG_ALIGN_TOP,
-            theme->GetColour(ThemeEntryID_TEXT),
-            "%zu component(s) selected", selected);
-    }
+    // Draw selection count (removed to give space to the TABS and becaue it's already present in the footer)
+    // size_t selected = GetSelectedCount();
+    // if (selected > 0) {
+    //     gfx::drawTextArgs(vg, 80.f, GetY() + 32.f, 18.f,
+    //         NVG_ALIGN_LEFT | NVG_ALIGN_TOP,
+    //         theme->GetColour(ThemeEntryID_TEXT),
+    //         "%zu component(s) selected", selected);
+    // }
 
     if (!m_error_message.empty()) {
         gfx::drawTextArgs(vg, SCREEN_WIDTH / 2.f, SCREEN_HEIGHT / 2.f, 24.f,
@@ -309,21 +383,32 @@ void UninstallerMenu::LoadComponents() {
     m_selected_ids.clear();
     m_error_message.clear();
 
-    if (!manifest::exists()) {
-        m_error_message = "No manifest.json found on SD card";
+    // Clear in-memory structures to prevent data bleeding between tabs
+    m_manifest.components.clear();
+    m_disabled.components.clear();
+
+    const bool is_custom = (m_tab == ComponentTab::Custom);
+
+    if (!manifest::exists(is_custom)) {
+        m_error_message = is_custom ? 
+                          "No custom_manifest.json found on SD card" : 
+                          "No manifest.json found on SD card";
         m_loaded = true;
-        log_write("[UNINSTALL] no manifest found at %s\n", manifest::MANIFEST_PATH);
+        log_write("[UNINSTALL] no manifest found at %s\n", 
+                  is_custom ? manifest::MANIFEST_PATH_CUSTOM : manifest::MANIFEST_PATH);
         return;
     }
 
-    if (!manifest::load(m_manifest)) {
-        m_error_message = "Failed to parse manifest.json";
+    if (!manifest::load(m_manifest, is_custom)) {
+        m_error_message = is_custom ? 
+                          "Failed to parse custom_manifest.json" : 
+                          "Failed to parse manifest.json";
         m_loaded = true;
         log_write("[UNINSTALL] failed to load manifest\n");
         return;
     }
 
-    if (!manifest::loadDisabled(m_disabled)) {
+    if (!manifest::loadDisabled(m_disabled, is_custom)) {
         m_error_message = "Failed to parse disabled components";
         m_loaded = true;
         log_write("[UNINSTALL] failed to load disabled components\n");
@@ -341,7 +426,9 @@ void UninstallerMenu::LoadComponents() {
         item.version = comp.version;
         item.category = comp.category;
         item.file_count = comp.files.size();
-        item.is_protected = m_view == ComponentView::Installed && manifest::isProtectedComponent(id);
+        item.is_protected = m_tab == ComponentTab::Hats && 
+                            m_view == ComponentView::Installed && 
+                            manifest::isProtectedComponent(id, is_custom);
         item.is_selected = false;
         m_items.push_back(item);
     }
@@ -377,6 +464,15 @@ void UninstallerMenu::SwitchView() {
     m_view = m_view == ComponentView::Installed ? ComponentView::Disabled : ComponentView::Installed;
     m_loaded = false;
     m_index = 0;
+    LoadComponents();
+}
+
+void UninstallerMenu::SwitchTab(ComponentTab tab) {
+    if (m_tab == tab) return;
+
+    m_tab = tab;
+    m_index = 0;
+    m_loaded = false;
     LoadComponents();
 }
 
@@ -428,7 +524,7 @@ void UninstallerMenu::DisableSelected() {
 
             App::Push<ProgressBox>(0, "Disabling"_i18n, std::to_string(count) + " components",
                 [this, ids](auto pbox) -> Result {
-                    return ProcessComponents(pbox, m_manifest, m_disabled, ids, ComponentOperation::Disable);
+                    return ProcessComponents(pbox, m_manifest, m_disabled, ids, ComponentOperation::Disable, m_tab);
                 },
                 [this, count](Result rc) {
                     if (R_SUCCEEDED(rc)) {
@@ -470,7 +566,7 @@ void UninstallerMenu::EnableSelected() {
 
             App::Push<ProgressBox>(0, "Enabling"_i18n, std::to_string(count) + " components",
                 [this, ids](auto pbox) -> Result {
-                    return ProcessComponents(pbox, m_manifest, m_disabled, ids, ComponentOperation::Enable);
+                    return ProcessComponents(pbox, m_manifest, m_disabled, ids, ComponentOperation::Enable, m_tab);
                 },
                 [this, count](Result rc) {
                     if (R_SUCCEEDED(rc)) {
@@ -515,7 +611,7 @@ void UninstallerMenu::DeleteSelectedPermanently() {
 
             App::Push<ProgressBox>(0, "Deleting"_i18n, std::to_string(count) + " components",
                 [this, ids, operation](auto pbox) -> Result {
-                    return ProcessComponents(pbox, m_manifest, m_disabled, ids, operation);
+                    return ProcessComponents(pbox, m_manifest, m_disabled, ids, operation, m_tab);
                 },
                 [this, count](Result rc) {
                     if (R_SUCCEEDED(rc)) {
