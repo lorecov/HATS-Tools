@@ -221,13 +221,13 @@ void UninstallerMenu::DrawTabs(NVGcontext* vg, Theme* theme) {
     bool custom_active = (m_tab == ComponentTab::Custom);
 
     // "Tools (-)" pill
-    const float pill_w = 110.f;
-    const float pill_h = 22.f;
+    const float pill_w = 125.f;
+    const float pill_h = 30.f;
     const float pill_x = custom_x + (tab_w - pill_w) / 2.f;
-    const float pill_y = y - pill_h + 1.f; // +1px per sovrapporre perfettamente il bordo
+    const float pill_y = y - pill_h + 1.f; // +1px per sovrapporsi al bordo superiore del tab
 
     nvgBeginPath(vg);
-    nvgRoundedRectVarying(vg, pill_x, pill_y, pill_w, pill_h, 5.f, 5.f, 0.f, 0.f);
+    nvgRoundedRectVarying(vg, pill_x, pill_y, pill_w, pill_h, 6.f, 6.f, 0.f, 0.f);
     nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
     nvgFill(vg);
 
@@ -241,15 +241,10 @@ void UninstallerMenu::DrawTabs(NVGcontext* vg, Theme* theme) {
                                      : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
     nvgStroke(vg);
 
-    gfx::drawTextArgs(vg, pill_x + 12.f, pill_y + pill_h / 2.f, 16.f,
-                      NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE,
-                      theme->GetColour(ThemeEntryID_TEXT_INFO),
-                      "%s", gfx::getButton(sphaira::Button::SELECT));
-
-    gfx::drawTextArgs(vg, pill_x + pill_w - 12.f, pill_y + pill_h / 2.f, 13.f,
-                      NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE,
+    gfx::drawTextArgs(vg, pill_x + pill_w / 2.f, pill_y + pill_h / 2.f, 18.f,
+                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
                       theme->GetColour(custom_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT_INFO),
-                      "Tools");
+                      "%s Tools", gfx::getButton(sphaira::Button::SELECT));
 
     // Custom tab body
     nvgBeginPath(vg);
