@@ -688,8 +688,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         [this]() {
             // TODO: Step 4 - Implementazione Fetch Versions
         }, 
-        true, 
-        "Check for new versions on GitHub / Direct URL"
+        true
     ));
 
     options->Add(std::make_unique<ui::SidebarEntryCallback>(
@@ -697,8 +696,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         [this]() {
             // TODO: Step 4 - Implementazione Update All
         }, 
-        true, 
-        "Update all custom components to latest version"
+        true
     ));
 
     options->Add(std::make_unique<ui::SidebarEntryCallback>(
@@ -706,8 +704,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         [this]() {
             // TODO: Step 4 - Implementazione Update Selected
         }, 
-        true, 
-        "Update only checked custom components"
+        true
     ));
 
     options->Add(std::make_unique<ui::SidebarEntryCallback>(
@@ -715,8 +712,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         [this]() {
             // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
         }, 
-        true, 
-        "Create a new custom component definition"
+        true
     ));
 
     options->Add(std::make_unique<ui::SidebarEntryCallback>(
@@ -724,8 +720,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
         [this]() {
             // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
         }, 
-        true, 
-        "Edit the selected custom component definition"
+        true
     ));
 
     App::Push(std::move(options));
