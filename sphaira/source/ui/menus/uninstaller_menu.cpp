@@ -681,27 +681,54 @@ void UninstallerMenu::DeselectAll() {
 }
 
 void UninstallerMenu::OpenCustomToolsSidebar() {
-    auto options = std::make_unique<ui::Sidebar>("Custom Tools", "Component Manager Options", ui::Sidebar::LEFT);
+    // 1. Corretto Side::LEFT (invece di Sidebar::LEFT)
+    auto options = std::make_unique<ui::Sidebar>("Custom Tools", "Component Manager Options", ui::Sidebar::Side::LEFT);
 
-    options->Add<ui::SidebarEntryCallback>("Fetch Versions (Check Updates)", [this]() {
-        // TODO: Step 4 - Implementazione Fetch Versions
-    }, true, "Check for new versions on GitHub / Direct URL");
+    // 2. Corretta la sintassi di Add: usa std::make_unique senza <ui::SidebarEntryCallback> su Add
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Fetch Versions (Check Updates)", 
+        [this]() {
+            // TODO: Step 4 - Implementazione Fetch Versions
+        }, 
+        true, 
+        "Check for new versions on GitHub / Direct URL"
+    ));
 
-    options->Add<ui::SidebarEntryCallback>("Update All Components", [this]() {
-        // TODO: Step 4 - Implementazione Update All
-    }, true, "Update all custom components to latest version");
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Update All Components", 
+        [this]() {
+            // TODO: Step 4 - Implementazione Update All
+        }, 
+        true, 
+        "Update all custom components to latest version"
+    ));
 
-    options->Add<ui::SidebarEntryCallback>("Update Selected Components", [this]() {
-        // TODO: Step 4 - Implementazione Update Selected
-    }, true, "Update only checked custom components");
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Update Selected Components", 
+        [this]() {
+            // TODO: Step 4 - Implementazione Update Selected
+        }, 
+        true, 
+        "Update only checked custom components"
+    ));
 
-    options->Add<ui::SidebarEntryCallback>("Add New Component", [this]() {
-        // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
-    }, true, "Create a new custom component definition");
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Add New Component", 
+        [this]() {
+            // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
+        }, 
+        true, 
+        "Create a new custom component definition"
+    ));
 
-    options->Add<ui::SidebarEntryCallback>("Modify Selected Component", [this]() {
-        // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
-    }, true, "Edit the selected custom component definition");
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Modify Selected Component", 
+        [this]() {
+            // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
+        }, 
+        true, 
+        "Edit the selected custom component definition"
+    ));
 
     App::Push(std::move(options));
 }
