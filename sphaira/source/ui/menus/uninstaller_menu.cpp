@@ -4,6 +4,7 @@
 #include "ui/option_box.hpp"
 #include "ui/progress_box.hpp"
 #include "ui/error_box.hpp"
+#include "ui/sidebar.hpp"
 
 #include "app.hpp"
 #include "log.hpp"
@@ -150,7 +151,7 @@ UninstallerMenu::UninstallerMenu() : MenuBase{"Component Manager", MenuFlag_None
         }}),
         std::make_pair(Button::SELECT, Action{"", [this](){
             if (m_tab == ComponentTab::Custom) {
-                // TODO: Step 2 - Apri Overlay Menu
+                OpenCustomToolsSidebar();
             }
         }})
     );
@@ -677,6 +678,32 @@ void UninstallerMenu::DeselectAll() {
     }
     m_selected_ids.clear();
     UpdateSubheading();
+}
+
+void UninstallerMenu::OpenCustomToolsSidebar() {
+    auto options = std::make_unique<ui::Sidebar>("Custom Tools", "Component Manager Options", ui::Sidebar::LEFT);
+
+    options->Add<ui::SidebarEntryCallback>("Fetch Versions (Check Updates)", [this]() {
+        // TODO: Step 4 - Implementazione Fetch Versions
+    }, true, "Check for new versions on GitHub / Direct URL");
+
+    options->Add<ui::SidebarEntryCallback>("Update All Components", [this]() {
+        // TODO: Step 4 - Implementazione Update All
+    }, true, "Update all custom components to latest version");
+
+    options->Add<ui::SidebarEntryCallback>("Update Selected Components", [this]() {
+        // TODO: Step 4 - Implementazione Update Selected
+    }, true, "Update only checked custom components");
+
+    options->Add<ui::SidebarEntryCallback>("Add New Component", [this]() {
+        // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
+    }, true, "Create a new custom component definition");
+
+    options->Add<ui::SidebarEntryCallback>("Modify Selected Component", [this]() {
+        // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
+    }, true, "Edit the selected custom component definition");
+
+    App::Push(std::move(options));
 }
 
 void UninstallerMenu::UpdateSubheading() {
