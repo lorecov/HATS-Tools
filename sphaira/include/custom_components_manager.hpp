@@ -161,7 +161,6 @@ public:
     // 4. NETWORK & UPDATE MANAGEMENT (UI OVERLAY BACKEND)
     // -------------------------------------------------------------------------
 
-    static void OpenCustomToolsSidebar(void* menu_ctx);
     /**
      * @brief Controlla le nuove versioni disponibili online per tutti i componenti Custom.
      */
