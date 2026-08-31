@@ -5,6 +5,7 @@
 #include "ui/progress_box.hpp"
 #include "ui/error_box.hpp"
 #include "ui/sidebar.hpp"
+#include "custom_components_manager.hpp"
 
 #include "app.hpp"
 #include "log.hpp"
@@ -151,7 +152,7 @@ UninstallerMenu::UninstallerMenu() : MenuBase{"Component Manager", MenuFlag_None
         }}),
         std::make_pair(Button::SELECT, Action{"", [this](){
             if (m_tab == ComponentTab::Custom) {
-                OpenCustomToolsSidebar();
+                CustomComponentsManager::OpenCustomToolsSidebar(this);
             }
         }})
     );
@@ -678,68 +679,6 @@ void UninstallerMenu::DeselectAll() {
     }
     m_selected_ids.clear();
     UpdateSubheading();
-}
-
-void UninstallerMenu::OpenCustomToolsSidebar() {
-    auto options = std::make_unique<ui::Sidebar>("Custom Components Tools", "", ui::Sidebar::Side::RIGHT);
-    
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Fetch Versions (Check Updates)", 
-        [this]() {
-            if (m_manifest.components.empty()) {
-                App::Notify("No custom components available.");
-                return;
-            }
-            // TODO: Step 4 - Implementazione Fetch Versions
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Update All Components", 
-        [this]() {
-            if (m_manifest.components.empty()) {
-                App::Notify("No custom components available.");
-                return;
-            }
-            // TODO: Step 4 - Implementazione Update All
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Update Selected Components", 
-        [this]() {
-            if (GetSelectedCount() == 0) {
-                App::Notify("No components selected for update.");
-                return;
-            }
-            // TODO: Step 4 - Implementazione Update Selected
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Add New Component", 
-        [this]() {
-            // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Modify Selected Component", 
-        [this]() {
-            if (GetSelectedCount() != 1) {
-                App::Notify("Please select exactly one component to modify.");
-                return;
-            }
-            // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
-        }, 
-        true
-    ));
-
-    App::Push(std::move(options));
 }
 
 void UninstallerMenu::UpdateSubheading() {
