@@ -1,8 +1,5 @@
 #include "custom_components_manager.hpp"
 #include "log.hpp"
-#include "ui/sidebar.hpp"
-#include "app.hpp"
-#include "ui/menus/uninstaller_menu.hpp"
 
 namespace sphaira::ui::menu::hats {
 
@@ -117,60 +114,6 @@ bool CustomComponentsManager::DeleteComponent(const std::string& comp_id, bool i
 // -----------------------------------------------------------------------------
 // 4. NETWORK & UPDATE MANAGEMENT (UI OVERLAY BACKEND)
 // -----------------------------------------------------------------------------
-
-void CustomComponentsManager::OpenCustomToolsSidebar(void* menu_ctx) {
-    auto* menu = static_cast<UninstallerMenu*>(menu_ctx);
-    if (!menu) return;
-
-    auto options = std::make_unique<ui::Sidebar>("Custom Components Tools", "", ui::Sidebar::Side::RIGHT);
-    
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Fetch Versions (Check Updates)", 
-        [menu]() {
-            // TODO: Implementare chiamata a FetchVersions
-            log_write("[CUSTOM_MGR] Callback Fetch Versions (stub)\n");
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Update All Components", 
-        [menu]() {
-            // TODO: Implementare chiamata a UpdateAllComponents
-            log_write("[CUSTOM_MGR] Callback Update All (stub)\n");
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Update Selected Components", 
-        [menu]() {
-            // TODO: Implementare chiamata a UpdateSelectedComponents
-            log_write("[CUSTOM_MGR] Callback Update Selected (stub)\n");
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Add New Component", 
-        [menu]() {
-            // TODO: Apertura CustomComponentEditor
-            log_write("[CUSTOM_MGR] Callback Add New Component (stub)\n");
-        }, 
-        true
-    ));
-
-    options->Add(std::make_unique<ui::SidebarEntryCallback>(
-        "Modify Selected Component", 
-        [menu]() {
-            // TODO: Apertura CustomComponentEditor per elemento selezionato
-            log_write("[CUSTOM_MGR] Callback Modify Selected Component (stub)\n");
-        }, 
-        true
-    ));
-
-    App::Push(std::move(options));
-}
 
 bool CustomComponentsManager::FetchVersions(std::unordered_map<std::string, CustomComponent>& catalog, ProgressCallback cb) {
     // TODO: Implementare FetchVersions (Download info di rete / API check versioni remote)
