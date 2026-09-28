@@ -4,6 +4,8 @@
 #include "ui/option_box.hpp"
 #include "ui/progress_box.hpp"
 #include "ui/error_box.hpp"
+#include "ui/sidebar.hpp"
+#include "custom_components_manager.hpp"
 
 #include "app.hpp"
 #include "log.hpp"
@@ -147,6 +149,11 @@ UninstallerMenu::UninstallerMenu() : MenuBase{"Component Manager", MenuFlag_None
         }}),
         std::make_pair(Button::R2, Action{"", [this](){
             SwitchTab(ComponentTab::Custom);
+        }}),
+        std::make_pair(Button::SELECT, Action{"", [this](){
+            if (m_tab == ComponentTab::Custom) {
+                OpenCustomToolsSidebar();
+            }
         }})
     );
 
@@ -215,6 +222,33 @@ void UninstallerMenu::DrawTabs(NVGcontext* vg, Theme* theme) {
     float custom_x = start_x + tab_w + 20.f;
     bool custom_active = (m_tab == ComponentTab::Custom);
 
+    // "Tools (-)" pill
+    const float pill_w = 125.f;
+    const float pill_h = 30.f;
+    const float pill_x = custom_x + (tab_w - pill_w) / 2.f;
+    const float pill_y = y - pill_h + 1.f; // +1px per sovrapporsi al bordo superiore del tab
+
+    nvgBeginPath(vg);
+    nvgRoundedRectVarying(vg, pill_x, pill_y, pill_w, pill_h, 6.f, 6.f, 0.f, 0.f);
+    nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
+    nvgFill(vg);
+
+    if (custom_active) {
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
+        nvgFill(vg);
+    }
+
+    nvgStrokeWidth(vg, custom_active ? 1.5f : 1.f);
+    nvgStrokeColor(vg, custom_active ? theme->GetColour(ThemeEntryID_TEXT_SELECTED)
+                                     : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
+    nvgStroke(vg);
+
+    gfx::drawTextArgs(vg, pill_x + pill_w / 2.f, pill_y + pill_h / 2.f, 18.f,
+                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(custom_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT_INFO),
+                      "%s Tools", gfx::getButton(sphaira::Button::SELECT));
+
+    // Custom tab body
     nvgBeginPath(vg);
     nvgRoundedRect(vg, custom_x, y, tab_w, height, 6.f);
     nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
@@ -645,6 +679,68 @@ void UninstallerMenu::DeselectAll() {
     }
     m_selected_ids.clear();
     UpdateSubheading();
+}
+
+void UninstallerMenu::OpenCustomToolsSidebar() {
+    auto options = std::make_unique<ui::Sidebar>("Custom Components Tools", "", ui::Sidebar::Side::RIGHT);
+    
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Fetch Versions (Check Updates)", 
+        [this]() {
+            if (m_manifest.components.empty()) {
+                App::Notify("No custom components available.");
+                return;
+            }
+            // TODO: Step 4 - Implementazione Fetch Versions
+        }, 
+        true
+    ));
+
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Update All Components", 
+        [this]() {
+            if (m_manifest.components.empty()) {
+                App::Notify("No custom components available.");
+                return;
+            }
+            // TODO: Step 4 - Implementazione Update All
+        }, 
+        true
+    ));
+
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Update Selected Components", 
+        [this]() {
+            if (GetSelectedCount() == 0) {
+                App::Notify("No components selected for update.");
+                return;
+            }
+            // TODO: Step 4 - Implementazione Update Selected
+        }, 
+        true
+    ));
+
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Add New Component", 
+        [this]() {
+            // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
+        }, 
+        true
+    ));
+
+    options->Add(std::make_unique<ui::SidebarEntryCallback>(
+        "Modify Selected Component", 
+        [this]() {
+            if (GetSelectedCount() != 1) {
+                App::Notify("Please select exactly one component to modify.");
+                return;
+            }
+            // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
+        }, 
+        true
+    ));
+
+    App::Push(std::move(options));
 }
 
 void UninstallerMenu::UpdateSubheading() {
