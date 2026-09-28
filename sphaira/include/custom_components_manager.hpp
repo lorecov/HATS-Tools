@@ -87,7 +87,7 @@ class CustomComponentsManager {
 public:
 
     // Percorsi standard del sistema custom
-    static constexpr const char* MANAGER_JSON_PATH = "/config/hats-tools/custom-components/manager/components.json";
+    static constexpr const char* MANAGER_JSON_PATH = "/config/hats-tools/custom-components/custom-manager/manager/components.json";
     static constexpr const char* STAGING_TEMP_DIR   = "/config/hats-tools/custom-components/components-manager/temp/";
     static constexpr const char* DISABLED_BASE_DIR  = "/config/hats-tools/custom-components/disabled-components/";
 
