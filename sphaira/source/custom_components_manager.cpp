@@ -500,7 +500,7 @@ bool CustomComponentsManager::SaveManagerCatalog(const std::unordered_map<std::s
     auto doc = load_mutable_json(MANAGER_JSON_PATH, true);
     if (!doc) return false;
     auto root = yyjson_mut_doc_get_root(doc);
-    if (!yyjson_is_obj(root)) {
+    if (!yyjson_mut_is_obj(root)) {
         yyjson_mut_doc_free(doc);
         return false;
     }
