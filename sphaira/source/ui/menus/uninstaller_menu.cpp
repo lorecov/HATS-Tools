@@ -188,7 +188,7 @@ void UninstallerMenu::DrawTabs(NVGcontext* vg, Theme* theme) {
     const float tab_w = (1220.f - 150.f - 20.f) / 2.f;
 
     // Helper to draw a standard tab shape with fill, overlay, stroke, and title
-    auto drawTab = [&](float x, float y_pos, float w, float h, bool active, float radii, const char* title, NVGalign align, float txt_x) {
+    auto drawTab = [&](float x, float y_pos, float w, float h, bool active, float radii, const char* title, int align, float txt_x) {
         nvgBeginPath(vg);
         if (radii > 0.f) nvgRoundedRect(vg, x, y_pos, w, h, radii);
         else nvgRoundedRectVarying(vg, x, y_pos, w, h, 6.f, 6.f, 0.f, 0.f);
