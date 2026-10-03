@@ -184,94 +184,56 @@ void UninstallerMenu::Update(Controller* controller, TouchInfo* touch) {
 }
 
 void UninstallerMenu::DrawTabs(NVGcontext* vg, Theme* theme) {
-    const float y = GetY() + 38.f;
-    const float height = 42.f;
-    const float start_x = 75.f;
-    const float total_w = 1220.f - 150.f;
-    const float tab_w = (total_w - 20.f) / 2.f;
+    const float y = GetY() + 38.f, height = 42.f, start_x = 75.f;
+    const float tab_w = (1220.f - 150.f - 20.f) / 2.f;
+
+    // Helper to draw a standard tab shape with fill, overlay, stroke, and title
+    auto drawTab = [&](float x, float y_pos, float w, float h, bool active, float radii, const char* title, NVGalign align, float txt_x) {
+        nvgBeginPath(vg);
+        if (radii > 0.f) nvgRoundedRect(vg, x, y_pos, w, h, radii);
+        else nvgRoundedRectVarying(vg, x, y_pos, w, h, 6.f, 6.f, 0.f, 0.f);
+
+        nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
+        nvgFill(vg);
+        if (active) {
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
+            nvgFill(vg);
+        }
+
+        nvgStrokeWidth(vg, active ? (radii > 0.f ? 2.f : 1.5f) : 1.f);
+        nvgStrokeColor(vg, theme->GetColour(active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_LINE_SEPARATOR));
+        nvgStroke(vg);
+
+        gfx::drawTextArgs(vg, txt_x, y_pos + h / 2.f, radii > 0.f ? 20.f : 18.f, align,
+                          theme->GetColour(active ? ThemeEntryID_TEXT_SELECTED : (radii > 0.f ? ThemeEntryID_TEXT : ThemeEntryID_TEXT_INFO)),
+                          "%s", title);
+    };
 
     // --- TAB 1: HATS ---
-    float hats_x = start_x;
     bool hats_active = (m_tab == ComponentTab::Hats);
-
-    nvgBeginPath(vg);
-    nvgRoundedRect(vg, hats_x, y, tab_w, height, 6.f);
-    nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
-    nvgFill(vg);
-    if (hats_active) {
-        nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
-        nvgFill(vg);
-    }
-
-    nvgStrokeWidth(vg, hats_active ? 2.f : 1.f);
-    nvgStrokeColor(vg, hats_active ? theme->GetColour(ThemeEntryID_TEXT_SELECTED) 
-                                   : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
-    nvgStroke(vg);
-
-    gfx::drawTextArgs(vg, hats_x + 20.f, y + height / 2.f, 22.f,
-                      NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE,
-                      theme->GetColour(ThemeEntryID_TEXT_INFO),
-                      "%s", gfx::getButton(sphaira::Button::L2));
-
-    gfx::drawTextArgs(vg, hats_x + tab_w / 2.f, y + height / 2.f, 20.f,
-                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
-                      theme->GetColour(hats_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT),
-                      "HATS");
+    drawTab(start_x, y, tab_w, height, hats_active, 6.f, "HATS", NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, start_x + tab_w / 2.f);
+    
+    // Left button prompt (L2)
+    gfx::drawTextArgs(vg, start_x + 20.f, y + height / 2.f, 22.f, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(ThemeEntryID_TEXT_INFO), "%s", gfx::getButton(sphaira::Button::L2));
 
     // --- TAB 2: Custom ---
-    float custom_x = start_x + tab_w + 20.f;
+    const float custom_x = start_x + tab_w + 20.f;
     bool custom_active = (m_tab == ComponentTab::Custom);
 
     // "Tools (-)" pill
-    const float pill_w = 125.f;
-    const float pill_h = 30.f;
+    const float pill_w = 125.f, pill_h = 30.f;
     const float pill_x = custom_x + (tab_w - pill_w) / 2.f;
-    const float pill_y = y - pill_h + 1.f; // +1px per sovrapporsi al bordo superiore del tab
-
-    nvgBeginPath(vg);
-    nvgRoundedRectVarying(vg, pill_x, pill_y, pill_w, pill_h, 6.f, 6.f, 0.f, 0.f);
-    nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
-    nvgFill(vg);
-
-    if (custom_active) {
-        nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
-        nvgFill(vg);
-    }
-
-    nvgStrokeWidth(vg, custom_active ? 1.5f : 1.f);
-    nvgStrokeColor(vg, custom_active ? theme->GetColour(ThemeEntryID_TEXT_SELECTED)
-                                     : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
-    nvgStroke(vg);
-
-    gfx::drawTextArgs(vg, pill_x + pill_w / 2.f, pill_y + pill_h / 2.f, 18.f,
-                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
-                      theme->GetColour(custom_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT_INFO),
-                      "%s Tools", gfx::getButton(sphaira::Button::SELECT));
+    char pill_buf[64];
+    snprintf(pill_buf, sizeof(pill_buf), "%s Tools", gfx::getButton(sphaira::Button::SELECT));
+    drawTab(pill_x, y - pill_h + 1.f, pill_w, pill_h, custom_active, 0.f, pill_buf, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, pill_x + pill_w / 2.f);
 
     // Custom tab body
-    nvgBeginPath(vg);
-    nvgRoundedRect(vg, custom_x, y, tab_w, height, 6.f);
-    nvgFillColor(vg, theme->GetColour(ThemeEntryID_BACKGROUND));
-    nvgFill(vg);
-    if (custom_active) {
-        nvgFillColor(vg, nvgRGBA(255, 255, 255, 25));
-        nvgFill(vg);
-    }
+    drawTab(custom_x, y, tab_w, height, custom_active, 6.f, "Custom", NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, custom_x + tab_w / 2.f);
 
-    nvgStrokeWidth(vg, custom_active ? 2.f : 1.f);
-    nvgStrokeColor(vg, custom_active ? theme->GetColour(ThemeEntryID_TEXT_SELECTED) 
-                                     : theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
-    nvgStroke(vg);
-
-    gfx::drawTextArgs(vg, custom_x + tab_w / 2.f, y + height / 2.f, 20.f,
-                      NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
-                      theme->GetColour(custom_active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT),
-                      "Custom");
-
-    gfx::drawTextArgs(vg, custom_x + tab_w - 20.f, y + height / 2.f, 22.f,
-                      NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE,
-                      theme->GetColour(ThemeEntryID_TEXT_INFO),
-                      "%s", gfx::getButton(sphaira::Button::R2));
+    // Right button prompt (R2)
+    gfx::drawTextArgs(vg, custom_x + tab_w - 20.f, y + height / 2.f, 22.f, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE,
+                      theme->GetColour(ThemeEntryID_TEXT_INFO), "%s", gfx::getButton(sphaira::Button::R2));
 }
 
 void UninstallerMenu::Draw(NVGcontext* vg, Theme* theme) {
