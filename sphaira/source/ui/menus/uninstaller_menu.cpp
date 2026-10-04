@@ -5,7 +5,6 @@
 #include "ui/progress_box.hpp"
 #include "ui/error_box.hpp"
 #include "ui/sidebar.hpp"
-#include "custom_components_manager.hpp"
 
 #include "app.hpp"
 #include "log.hpp"
