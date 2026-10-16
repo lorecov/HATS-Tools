@@ -34,7 +34,7 @@
 // Configuration
 #define STAGING_PATH      "sd:/config/hats-tools/hats-staging"
 #define PAYLOAD_PATH      "sd:/payload.bin"
-#define HEKATE_INI_BAK   "sd:/bootloader/hekate_ipl.ini.bak"
+#define HEKATE_INI_BAK   "sd:/config/hats-tools/hekate_ipl.ini.bak"
 #define HEKATE_INI       "sd:/bootloader/hekate_ipl.ini"
 #define CONFIG_PATH       "sd:/config/hats-tools/config.ini"
 #define LAUNCH_CONFIG_PATH "sd:/config/hats-tools/payload-launch.ini"
