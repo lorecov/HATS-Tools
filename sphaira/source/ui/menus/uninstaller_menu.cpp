@@ -11,6 +11,7 @@
 #include "fs.hpp"
 #include "i18n.hpp"
 #include "manifest.hpp"
+#include "custom_components.hpp"
 #include <algorithm>
 
 namespace sphaira::ui::menu::hats {
@@ -652,7 +653,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
                 App::Notify("No custom components available.");
                 return;
             }
-            // TODO: Step 4 - Implementazione Fetch Versions
+            custom::FetchVersions(m_manifest.components);
         }, 
         true
     ));
@@ -664,7 +665,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
                 App::Notify("No custom components available.");
                 return;
             }
-            // TODO: Step 4 - Implementazione Update All
+            custom::UpdateAllComponents(m_manifest.components);
         }, 
         true
     ));
@@ -676,7 +677,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
                 App::Notify("No components selected for update.");
                 return;
             }
-            // TODO: Step 4 - Implementazione Update Selected
+            custom::UpdateSelectedComponents(m_selected_ids);
         }, 
         true
     ));
@@ -684,7 +685,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
     options->Add(std::make_unique<ui::SidebarEntryCallback>(
         "Add New Component", 
         [this]() {
-            // TODO: Step 4 - Implementazione Add Component (Schermata CustomComponentEditor)
+            custom::AddNewComponent();
         }, 
         true
     ));
@@ -696,7 +697,7 @@ void UninstallerMenu::OpenCustomToolsSidebar() {
                 App::Notify("Please select exactly one component to modify.");
                 return;
             }
-            // TODO: Step 4 - Implementazione Modify Component (Schermata CustomComponentEditor)
+            custom::ModifySelectedComponent(*m_selected_ids.begin());
         }, 
         true
     ));
