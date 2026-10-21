@@ -2462,7 +2462,7 @@ auto GetExistingCheats(u64 title_id) -> std::vector<std::pair<std::string, std::
             if (name.length() > 4 && name.substr(name.length() - 4) == ".txt") {
                 std::string build_id = name.substr(0, name.length() - 4);
                 cheats.push_back({build_id, name});
-                log_write("[Cheats] Found cheat: %s (Build ID: %s)\n", name, build_id.c_str());
+                log_write("[Cheats] Found cheat: %s (Build ID: %s)\n", name.c_str(), build_id.c_str());
             }
         }
     }

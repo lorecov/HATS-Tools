@@ -69,7 +69,7 @@ std::string formatSizeNetwork(u64 size) {
 // Hekate IPL ini manipulation
 namespace {
     constexpr const char* HEKATE_INI_PATH = "/bootloader/hekate_ipl.ini";
-    constexpr const char* HEKATE_INI_BAK_PATH = "/bootloader/hekate_ipl.ini.bak";
+    constexpr const char* HEKATE_INI_BAK_PATH = "/config/hats-tools/hekate_ipl.ini.bak";
     constexpr const char* LOCKPICK_PAYLOAD_DIR = "/bootloader/payloads";
 
     bool backupHekateIni() {
