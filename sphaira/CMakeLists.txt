@@ -97,7 +97,7 @@ add_executable(hats-tools
     source/ui/menus/pack_details_menu.cpp
     source/ui/menus/firmware_menu.cpp
     source/ui/menus/uninstaller_menu.cpp
-    source/custom_components_manager.cpp
+    source/ui/menus/custom_tools_menu.cpp
     source/ui/menus/cheats_menu.cpp
 
     source/ui/error_box.cpp
@@ -130,6 +130,7 @@ add_executable(hats-tools
     # HATS Tools utilities
     source/hats_version.cpp
     source/manifest.cpp
+    source/custom_components.cpp
     source/nxlink.cpp
     source/owo.cpp
     source/swkbd.cpp
