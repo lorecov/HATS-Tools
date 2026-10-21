@@ -13,7 +13,6 @@
 #include "log.hpp"
 #include "download.hpp"
 #include "fs.hpp"
-#include "manifest.hpp"
 #include "i18n.hpp"
 #include "yyjson_helper.hpp"
 #include "threaded_file_transfer.hpp"
@@ -253,13 +252,13 @@ auto DownloadAndExtract(ProgressBox* pbox, const ReleaseEntry& release) -> Resul
     if (fs.DirExists(staging_path)) {
         Result rc = fs.DeleteDirectoryRecursively(staging_path);
         if (R_FAILED(rc)) {
-            hats_log_write("hats: failed to delete staging directory: 0x%X\n", rc);
-            return rc;
+            hats_log_write("hats: warning - failed to delete staging directory: 0x%X\n", rc);
+            // Continue anyway, we'll try to extract over it
         } else {
             hats_log_write("hats: successfully deleted staging directory\n");
         }
     }
-    R_TRY(fs.CreateDirectoryRecursively(staging_path));
+    fs.CreateDirectoryRecursively(staging_path);
 
     // Build download path: use original asset name for caching
     std::string download_path = std::string(CACHE_PATH) + "/" + release.asset_name;
@@ -328,7 +327,6 @@ auto DownloadAndExtract(ProgressBox* pbox, const ReleaseEntry& release) -> Resul
 
     // Commit file system changes
     if (!pbox->ShouldExit()) {
-        R_UNLESS(manifest::prepareDisabledUpdate(staging_path, &fs), 0x2);
         hats_log_write("hats: committing file system changes\n");
         Result commit_result = fs.Commit();
         hats_log_write("hats: commit result: 0x%X\n", commit_result);
@@ -1016,11 +1014,10 @@ void CacheManagerMenu::ReinstallFromCache() {
                     if (fs.DirExists(staging_path)) {
                         Result rc = fs.DeleteDirectoryRecursively(staging_path);
                         if (R_FAILED(rc)) {
-                            hats_log_write("hats: failed to delete staging directory: 0x%X\n", rc);
-                            return rc;
+                            hats_log_write("hats: warning - failed to delete staging directory: 0x%X\n", rc);
                         }
                     }
-                    R_TRY(fs.CreateDirectoryRecursively(staging_path));
+                    fs.CreateDirectoryRecursively(staging_path);
 
                     // Extract from cached zip
                     if (!pbox->ShouldExit()) {
@@ -1040,7 +1037,6 @@ void CacheManagerMenu::ReinstallFromCache() {
 
                     // Commit file system changes
                     if (!pbox->ShouldExit()) {
-                        R_UNLESS(manifest::prepareDisabledUpdate(staging_path, &fs), 0x2);
                         R_TRY(fs.Commit());
                     }
 
