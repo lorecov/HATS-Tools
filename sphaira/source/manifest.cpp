@@ -341,16 +341,16 @@ bool saveDisabled(const DisabledComponents& disabled, bool is_custom) {
     return success;
 }
 
-bool prepareDisabledUpdate(const fs::FsPath& staging_path, fs::Fs* fs) {
+bool prepareDisabledUpdate(const fs::FsPath& staging_path, fs::Fs* fs, bool is_custom) {
     DisabledComponents disabled;
-    if (!loadDisabled(disabled)) {
+    if (!loadDisabled(disabled, is_custom)) {
         return false;
     }
     if (disabled.components.empty()) {
         return true;
     }
 
-    const auto staged_manifest = staging_path + MANIFEST_PATH;
+    const auto staged_manifest = staging_path + get_manifest_path(is_custom);
     auto doc = yyjson_read_file(staged_manifest, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!doc) {
         log_write("[UPDATE] failed to read staged manifest\n");
@@ -405,7 +405,7 @@ bool prepareDisabledUpdate(const fs::FsPath& staging_path, fs::Fs* fs) {
             }
 
             const auto source = staging_path + path;
-            const auto destination = staging_path + disabled_path_for(id, file);
+            const auto destination = staging_path + disabled_path_for(id, file, is_custom);
             if (R_FAILED(fs->CreateDirectoryRecursivelyWithPath(destination))) {
                 return false;
             }
@@ -452,7 +452,7 @@ bool prepareDisabledUpdate(const fs::FsPath& staging_path, fs::Fs* fs) {
         yyjson_mut_obj_add_val(disabled_doc, disabled_components, id.c_str(), component_to_json(disabled_doc, comp));
     }
 
-    const auto staged_disabled = staging_path + DISABLED_COMPONENTS_PATH;
+    const auto staged_disabled = staging_path + get_disabled_path(is_custom);
     if (R_FAILED(fs->CreateDirectoryRecursivelyWithPath(staged_disabled))) {
         return false;
     }
