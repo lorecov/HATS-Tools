@@ -3,7 +3,10 @@
 #include "app.hpp"
 #include "custom_catalog.hpp"
 #include "fs.hpp"
+#include "log.hpp"
 #include "ui/menus/custom_component_editor.hpp"
+
+#include <utility>
 
 namespace sphaira::custom {
 
@@ -48,8 +51,42 @@ bool AddNewComponent() {
                 assets.push_back({asset.pattern, asset.processing_steps});
             }
 
+            if (!EnsureDirectories()) {
+                App::Notify("Failed to prepare custom component directories");
+                return false;
+            }
+
+            manifest::Manifest custom_manifest;
+            if (manifest::exists(true) && !manifest::load(custom_manifest, true)) {
+                App::Notify("Failed to load custom_manifest.json");
+                return false;
+            }
+            if (custom_manifest.components.contains(component.id)) {
+                App::Notify("Component ID already exists in custom_manifest.json");
+                return false;
+            }
+
+            manifest::Component manifest_component;
+            manifest_component.id = component.id;
+            manifest_component.name = component.name;
+            manifest_component.version.clear();
+            manifest_component.repo = component.repo;
+            manifest_component.files.clear();
+            custom_manifest.components.emplace(manifest_component.id, std::move(manifest_component));
+
+            if (!manifest::save(custom_manifest, true)) {
+                App::Notify("Failed to save custom_manifest.json");
+                return false;
+            }
+
             if (!catalog::AddComponent(component, assets)) {
-                App::Notify("Failed to save component. The ID may already exist or the catalog could not be written.");
+                custom_manifest.components.erase(component.id);
+                if (!manifest::save(custom_manifest, true)) {
+                    log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest entry '%s'\n", component.id.c_str());
+                    App::Notify("Failed to save components.json and rollback custom_manifest.json");
+                    return false;
+                }
+                App::Notify("Failed to save components.json. The manifest entry was rolled back.");
                 return false;
             }
 
