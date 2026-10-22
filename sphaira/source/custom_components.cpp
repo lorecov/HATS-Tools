@@ -69,7 +69,8 @@ bool AddNewComponent() {
             manifest::Component manifest_component;
             manifest_component.id = component.id;
             manifest_component.name = component.name;
-            manifest_component.version.clear();
+            manifest_component.version = "not installed";
+            manifest_component.category = component.category;
             manifest_component.repo = component.repo;
             manifest_component.files.clear();
             custom_manifest.components.emplace(manifest_component.id, std::move(manifest_component));
