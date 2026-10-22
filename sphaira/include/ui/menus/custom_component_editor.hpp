@@ -12,6 +12,8 @@
 
 namespace sphaira::ui::menu::hats {
 
+namespace catalog = ::sphaira::custom::catalog;
+
 struct CustomComponentEditorDraft {
     struct Asset {
         std::string pattern;
