@@ -2,6 +2,7 @@
 #include "ui/menus/custom_component_editor.hpp"
 
 #include "ui/nvg_util.hpp"
+#include "ui/option_box.hpp"
 #include "ui/popup_list.hpp"
 
 #include "app.hpp"
@@ -156,7 +157,7 @@ CustomComponentProcessingStepsEditor::CustomComponentProcessingStepsEditor(
             }
         }}),
         std::make_pair(Button::B, Action{"Back"_i18n, [this](){
-            SetPop();
+            RequestBack();
         }}),
         std::make_pair(Button::SELECT, Action{"Configure"_i18n, [this](){
             if (m_index >= 0 && static_cast<size_t>(m_index) < m_steps.size()) {
@@ -218,6 +219,39 @@ void CustomComponentProcessingStepsEditor::SetIndex(s64 index) {
     if (m_index == 0) {
         m_list->SetYoff(0);
     }
+}
+
+bool CustomComponentProcessingStepsEditor::HasUnsavedChanges() const {
+    if (m_steps.size() != m_target_steps.size()) {
+        return true;
+    }
+
+    for (size_t i = 0; i < m_steps.size(); ++i) {
+        const auto& current = m_steps[i];
+        const auto& saved = m_target_steps[i];
+        if (current.type != saved.type ||
+            current.target_path != saved.target_path ||
+            current.subfolder_name != saved.subfolder_name ||
+            current.source_file_pattern != saved.source_file_pattern ||
+            current.target_filename != saved.target_filename) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CustomComponentProcessingStepsEditor::RequestBack() {
+    if (!HasUnsavedChanges()) {
+        SetPop();
+        return;
+    }
+
+    App::Push<ui::OptionBox>("Exit without saving processing steps?",
+        "Exit without saving", "Continue editing", 1, [this](auto selected) {
+            if (selected && *selected == 0) {
+                SetPop();
+            }
+        });
 }
 
 void CustomComponentProcessingStepsEditor::ChooseStepType(size_t index, bool add_step) {
