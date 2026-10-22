@@ -25,6 +25,27 @@ struct CustomComponentEditorDraft {
     std::vector<catalog::ProcessingStep> direct_url_steps;
 };
 
+struct CustomComponentProcessingStepsEditor final : MenuBase {
+    explicit CustomComponentProcessingStepsEditor(std::vector<catalog::ProcessingStep>& steps, std::string title);
+
+    auto GetShortTitle() const -> const char* override { return "Processing Steps"; }
+    void Update(Controller* controller, TouchInfo* touch) override;
+    void Draw(NVGcontext* vg, Theme* theme) override;
+
+private:
+    void SetIndex(s64 index);
+    void EditStep(size_t index);
+    void AddStep();
+    void RemoveStep();
+    void MoveStep(s64 direction);
+    void EditText(std::string& value, const std::string& title);
+    void DrawStep(NVGcontext* vg, Theme* theme, const Vec4& rect, size_t index) const;
+
+    std::vector<catalog::ProcessingStep>& m_steps;
+    std::unique_ptr<List> m_list;
+    s64 m_index{};
+};
+
 struct CustomComponentEditor final : MenuBase {
     using SaveCallback = std::function<void(const CustomComponentEditorDraft&)>;
 
@@ -48,11 +69,7 @@ private:
         SourceType,
         SourceLocation,
         AssetPattern,
-        AddAssetPattern,
-        AssetStepsInfo,
-        DirectStepsHeader,
-        ProcessingStep,
-        AddProcessingStep,
+        NoAssetsInfo,
     };
 
     struct Row {
@@ -68,11 +85,10 @@ private:
     void OnRemove();
     void OnSave();
     void EditText(std::string& value, const std::string& title);
-    void EditStep(size_t index, std::vector<catalog::ProcessingStep>& steps);
+    void OpenSelectedSteps();
+    void UpdateSourceActions();
     void DrawTabs(NVGcontext* vg, Theme* theme) const;
     std::string GetRowValue(const Row& row) const;
-    std::vector<catalog::ProcessingStep>* GetSelectedSteps();
-    const std::vector<catalog::ProcessingStep>* GetSelectedSteps() const;
 
     catalog::CustomComponent m_component;
     std::vector<CustomComponentEditorDraft::Asset> m_assets;

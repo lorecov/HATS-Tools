@@ -54,6 +54,187 @@ const char* GetStepName(catalog::StepType type) {
 
 } // namespace
 
+CustomComponentProcessingStepsEditor::CustomComponentProcessingStepsEditor(
+    std::vector<catalog::ProcessingStep>& steps, std::string title)
+    : MenuBase{std::move(title), MenuFlag_None}
+    , m_steps{steps} {
+    SetActions(
+        std::make_pair(Button::A, Action{"Edit"_i18n, [this](){
+            if (m_index >= 0 && static_cast<size_t>(m_index) < m_steps.size()) {
+                EditStep(m_index);
+            }
+        }}),
+        std::make_pair(Button::B, Action{"Back"_i18n, [this](){
+            SetPop();
+        }}),
+        std::make_pair(Button::X, Action{"Add Step"_i18n, [this](){
+            AddStep();
+        }}),
+        std::make_pair(Button::Y, Action{"Remove Step"_i18n, [this](){
+            RemoveStep();
+        }}),
+        std::make_pair(Button::L, Action{"Move Up"_i18n, [this](){
+            MoveStep(-1);
+        }}),
+        std::make_pair(Button::R, Action{"Move Down"_i18n, [this](){
+            MoveStep(1);
+        }})
+    );
+
+    const Vec4 list_pos{75.f, GetY() + 72.f, 1220.f - 150.f, 64.f};
+    m_list = std::make_unique<List>(1, 7, m_pos, list_pos);
+    m_list->SetLayout(List::Layout::GRID);
+}
+
+void CustomComponentProcessingStepsEditor::Update(Controller* controller, TouchInfo* touch) {
+    MenuBase::Update(controller, touch);
+    if (m_steps.empty()) {
+        return;
+    }
+
+    m_list->OnUpdate(controller, touch, m_index, m_steps.size(), [this](bool touched, auto index) {
+        if (touched && m_index == index) {
+            FireAction(Button::A);
+        } else {
+            App::PlaySoundEffect(SoundEffect::Focus);
+            SetIndex(index);
+        }
+    });
+}
+
+void CustomComponentProcessingStepsEditor::Draw(NVGcontext* vg, Theme* theme) {
+    MenuBase::Draw(vg, theme);
+    if (m_steps.empty()) {
+        gfx::drawText(vg, 95.f, GetY() + 105.f, 21.f,
+            "No processing steps. Press X to add one.",
+            nullptr, NVG_ALIGN_LEFT | NVG_ALIGN_TOP, theme->GetColour(ThemeEntryID_TEXT_INFO));
+        return;
+    }
+
+    m_list->Draw(vg, theme, m_steps.size(), [this](auto* vg, auto* theme, const auto& rect, auto index) {
+        DrawStep(vg, theme, rect, index);
+    });
+}
+
+void CustomComponentProcessingStepsEditor::SetIndex(s64 index) {
+    if (m_steps.empty()) {
+        m_index = 0;
+        return;
+    }
+    m_index = std::clamp<s64>(index, 0, static_cast<s64>(m_steps.size()) - 1);
+    if (m_index == 0) {
+        m_list->SetYoff(0);
+    }
+}
+
+void CustomComponentProcessingStepsEditor::EditStep(size_t index) {
+    if (index >= m_steps.size()) {
+        return;
+    }
+
+    const ui::PopupList::Items items{
+        "Change Step Type",
+        "Target Path",
+        "Subfolder Name",
+        "Source File Pattern",
+        "Target Filename",
+    };
+    App::Push<ui::PopupList>("Processing Step", items, [this, index](auto selected) {
+        if (!selected || *selected < 0 || index >= m_steps.size()) {
+            return;
+        }
+
+        auto& step = m_steps[index];
+        switch (*selected) {
+            case 0: {
+                const ui::PopupList::Items names(std::begin(STEP_NAMES), std::end(STEP_NAMES));
+                const auto current = std::find(std::begin(STEP_TYPES), std::end(STEP_TYPES), step.type);
+                const auto current_index = current == std::end(STEP_TYPES) ? 0 : std::distance(std::begin(STEP_TYPES), current);
+                App::Push<ui::PopupList>("Step Type", names, [this, index](auto type_index) {
+                    if (type_index && *type_index >= 0 && static_cast<size_t>(*type_index) < std::size(STEP_TYPES) &&
+                        index < m_steps.size()) {
+                        m_steps[index].type = STEP_TYPES[*type_index];
+                    }
+                }, current_index);
+                break;
+            }
+            case 1:
+                EditText(step.target_path, "Target Path");
+                break;
+            case 2:
+                EditText(step.subfolder_name, "Subfolder Name");
+                break;
+            case 3:
+                EditText(step.source_file_pattern, "Source File Pattern");
+                break;
+            case 4:
+                EditText(step.target_filename, "Target Filename");
+                break;
+            default:
+                break;
+        }
+    });
+}
+
+void CustomComponentProcessingStepsEditor::AddStep() {
+    m_steps.emplace_back();
+    SetIndex(static_cast<s64>(m_steps.size()) - 1);
+    EditStep(m_index);
+}
+
+void CustomComponentProcessingStepsEditor::RemoveStep() {
+    if (m_index < 0 || static_cast<size_t>(m_index) >= m_steps.size()) {
+        return;
+    }
+    m_steps.erase(m_steps.begin() + m_index);
+    SetIndex(std::min<s64>(m_index, static_cast<s64>(m_steps.size()) - 1));
+}
+
+void CustomComponentProcessingStepsEditor::MoveStep(s64 direction) {
+    if (m_index < 0 || static_cast<size_t>(m_index) >= m_steps.size()) {
+        return;
+    }
+    const auto next_index = m_index + direction;
+    if (next_index < 0 || static_cast<size_t>(next_index) >= m_steps.size()) {
+        return;
+    }
+    std::swap(m_steps[m_index], m_steps[next_index]);
+    SetIndex(next_index);
+}
+
+void CustomComponentProcessingStepsEditor::DrawStep(NVGcontext* vg, Theme* theme, const Vec4& rect, size_t index) const {
+    const auto& [x, y, w, h] = rect;
+    const bool selected = m_index == static_cast<s64>(index);
+    if (selected) {
+        gfx::drawRectOutline(vg, theme, 3.f, rect);
+    } else if (index + 1 < m_steps.size()) {
+        gfx::drawRect(vg, x, y + h, w, 1.f, theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
+    }
+
+    const auto& step = m_steps[index];
+    gfx::drawTextArgs(vg, x + 20.f, y + 15.f, 20.f, NVG_ALIGN_LEFT | NVG_ALIGN_TOP,
+        theme->GetColour(selected ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT),
+        "%zu. %s", index + 1, GetStepName(step.type));
+
+    std::string parameters;
+    if (!step.target_path.empty()) parameters = "Target: " + step.target_path;
+    if (!step.subfolder_name.empty()) parameters += (parameters.empty() ? "" : "  |  ") + std::string{"Subfolder: "} + step.subfolder_name;
+    if (!step.source_file_pattern.empty()) parameters += (parameters.empty() ? "" : "  |  ") + std::string{"Source: "} + step.source_file_pattern;
+    if (!step.target_filename.empty()) parameters += (parameters.empty() ? "" : "  |  ") + std::string{"Filename: "} + step.target_filename;
+    if (parameters.empty()) parameters = "Press A to configure";
+
+    gfx::drawTextBox(vg, x + 20.f, y + 40.f, 15.f, w - 40.f,
+        theme->GetColour(ThemeEntryID_TEXT_INFO), parameters.c_str(),
+        NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
+}
+
+void CustomComponentProcessingStepsEditor::EditText(std::string& value, const std::string& title) {
+    std::string updated;
+    if (R_SUCCEEDED(swkbd::ShowText(updated, title.c_str(), title.c_str(), value.c_str(), 0, 512))) {
+        value = std::move(updated);
+    }
+}
+
 CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component, bool is_new, SaveCallback on_save)
     : MenuBase{is_new ? "Add Custom Component" : "Edit Custom Component", MenuFlag_None}
     , m_component{std::move(component)}
@@ -80,11 +261,14 @@ CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component,
         std::make_pair(Button::B, Action{"Back"_i18n, [this](){
             SetPop();
         }}),
-        std::make_pair(Button::X, Action{"Add"_i18n, [this](){
+        std::make_pair(Button::X, Action{"Add Asset"_i18n, [this](){
             OnAdd();
         }}),
         std::make_pair(Button::Y, Action{"Remove"_i18n, [this](){
             OnRemove();
+        }}),
+        std::make_pair(Button::SELECT, Action{"Processing Steps"_i18n, [this](){
+            OpenSelectedSteps();
         }}),
         std::make_pair(Button::L, Action{"Details"_i18n, [this](){
             SetTab(Tab::Details);
@@ -101,6 +285,7 @@ CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component,
     m_list = std::make_unique<List>(1, 7, m_pos, list_pos);
     m_list->SetLayout(List::Layout::GRID);
     BuildRows();
+    UpdateSourceActions();
 }
 
 void CustomComponentEditor::Update(Controller* controller, TouchInfo* touch) {
@@ -158,11 +343,7 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
             case RowType::SourceType: label = "Source Type"; break;
             case RowType::SourceLocation: label = m_component.source_type == "direct_url" ? "Direct URL" : "GitHub Repo"; break;
             case RowType::AssetPattern: label = "Asset Pattern " + std::to_string(row.index + 1); break;
-            case RowType::AddAssetPattern: label = "Add Asset Pattern"; break;
-            case RowType::AssetStepsInfo: label = "Add an asset pattern to configure its processing steps"; break;
-            case RowType::DirectStepsHeader: label = "Processing Steps"; break;
-            case RowType::ProcessingStep: label = "Processing Step " + std::to_string(row.index + 1); break;
-            case RowType::AddProcessingStep: label = "Add Processing Step"; break;
+            case RowType::NoAssetsInfo: label = "No asset patterns. Press X to add one."; break;
         }
 
         const auto value = GetRowValue(row);
@@ -225,21 +406,9 @@ void CustomComponentEditor::BuildRows() {
             for (size_t i = 0; i < m_assets.size(); ++i) {
                 m_rows.push_back({RowType::AssetPattern, i});
             }
-            m_rows.push_back({RowType::AddAssetPattern});
             if (m_assets.empty()) {
-                m_rows.push_back({RowType::AssetStepsInfo});
-            } else {
-                for (size_t i = 0; i < m_assets[m_selected_asset].processing_steps.size(); ++i) {
-                    m_rows.push_back({RowType::ProcessingStep, i});
-                }
-                m_rows.push_back({RowType::AddProcessingStep});
+                m_rows.push_back({RowType::NoAssetsInfo});
             }
-        } else {
-            m_rows.push_back({RowType::DirectStepsHeader});
-            for (size_t i = 0; i < m_direct_url_steps.size(); ++i) {
-                m_rows.push_back({RowType::ProcessingStep, i});
-            }
-            m_rows.push_back({RowType::AddProcessingStep});
         }
     }
 
@@ -263,10 +432,12 @@ void CustomComponentEditor::SetIndex(s64 index) {
         m_selected_asset = m_rows[index].index;
         m_index = index;
         BuildRows();
+        UpdateSourceActions();
         return;
     }
 
     m_index = index;
+    UpdateSourceActions();
     if (m_index == 0) {
         m_list->SetYoff(0);
     }
@@ -279,6 +450,7 @@ void CustomComponentEditor::SetTab(Tab tab) {
     m_tab = tab;
     m_index = 0;
     BuildRows();
+    UpdateSourceActions();
 }
 
 void CustomComponentEditor::OnSelect() {
@@ -296,11 +468,16 @@ void CustomComponentEditor::OnSelect() {
             break;
         case RowType::Category: {
             ui::PopupList::Items items(std::begin(CATEGORIES), std::end(CATEGORIES));
+            items.insert(items.begin(), "None");
+            const auto category = std::find(std::begin(CATEGORIES), std::end(CATEGORIES), m_component.category);
+            const auto category_index = category == std::end(CATEGORIES)
+                ? 0
+                : static_cast<s64>(std::distance(std::begin(CATEGORIES), category)) + 1;
             App::Push<ui::PopupList>("Category", items, [this](auto index) {
-                if (index && *index >= 0 && static_cast<size_t>(*index) < std::size(CATEGORIES)) {
-                    m_component.category = CATEGORIES[*index];
+                if (index && *index >= 0 && static_cast<size_t>(*index) <= std::size(CATEGORIES)) {
+                    m_component.category = *index == 0 ? "" : CATEGORIES[*index - 1];
                 }
-            }, m_component.category);
+            }, category_index);
             break;
         }
         case RowType::Description:
@@ -312,6 +489,7 @@ void CustomComponentEditor::OnSelect() {
                 if (index) {
                     m_component.source_type = *index == 0 ? "github_release" : "direct_url";
                     BuildRows();
+                    UpdateSourceActions();
                 }
             }, m_component.source_type == "direct_url" ? 1 : 0);
             break;
@@ -322,55 +500,27 @@ void CustomComponentEditor::OnSelect() {
         case RowType::AssetPattern:
             EditText(m_assets[row.index].pattern, "Asset Pattern");
             break;
-        case RowType::AddAssetPattern:
-            OnAdd();
-            break;
-        case RowType::ProcessingStep: {
-            auto* steps = GetSelectedSteps();
-            if (steps) {
-                EditStep(row.index, *steps);
-            }
-            break;
-        }
-        case RowType::AddProcessingStep:
-            OnAdd();
-            break;
-        case RowType::AssetStepsInfo:
-        case RowType::DirectStepsHeader:
+        case RowType::NoAssetsInfo:
             break;
     }
 }
 
 void CustomComponentEditor::OnAdd() {
-    if (m_tab != Tab::Source) {
-        return;
-    }
-    if (m_component.source_type == "github_release") {
-        if (!m_assets.empty() && m_rows[m_index].type == RowType::AddProcessingStep) {
-            auto& steps = m_assets[m_selected_asset].processing_steps;
-            steps.emplace_back();
-            EditStep(steps.size() - 1, steps);
-            BuildRows();
-            return;
-        }
-
-        m_assets.push_back({});
-        m_selected_asset = m_assets.size() - 1;
-        BuildRows();
-        const auto pattern_row = std::find_if(m_rows.begin(), m_rows.end(), [this](const auto& row) {
-            return row.type == RowType::AssetPattern && row.index == m_selected_asset;
-        });
-        if (pattern_row != m_rows.end()) {
-            m_index = std::distance(m_rows.begin(), pattern_row);
-            EditText(m_assets[m_selected_asset].pattern, "Asset Pattern");
-        }
-        BuildRows();
+    if (m_tab != Tab::Source || m_component.source_type != "github_release") {
         return;
     }
 
-    m_direct_url_steps.emplace_back();
-    EditStep(m_direct_url_steps.size() - 1, m_direct_url_steps);
+    m_assets.push_back({});
+    m_selected_asset = m_assets.size() - 1;
     BuildRows();
+    const auto pattern_row = std::find_if(m_rows.begin(), m_rows.end(), [this](const auto& row) {
+        return row.type == RowType::AssetPattern && row.index == m_selected_asset;
+    });
+    if (pattern_row != m_rows.end()) {
+        m_index = std::distance(m_rows.begin(), pattern_row);
+        UpdateSourceActions();
+        EditText(m_assets[m_selected_asset].pattern, "Asset Pattern");
+    }
 }
 
 void CustomComponentEditor::OnRemove() {
@@ -388,11 +538,61 @@ void CustomComponentEditor::OnRemove() {
             m_selected_asset = std::min(m_selected_asset, m_assets.size() - 1);
         }
         BuildRows();
-    } else if (row.type == RowType::ProcessingStep) {
-        if (auto* steps = GetSelectedSteps(); steps && row.index < steps->size()) {
-            steps->erase(steps->begin() + row.index);
-            BuildRows();
-        }
+        UpdateSourceActions();
+    }
+}
+
+void CustomComponentEditor::OpenSelectedSteps() {
+    if (m_tab != Tab::Source || m_rows.empty() || m_index < 0 ||
+        static_cast<size_t>(m_index) >= m_rows.size()) {
+        return;
+    }
+
+    const auto& row = m_rows[m_index];
+    if (m_component.source_type == "direct_url" && row.type == RowType::SourceLocation) {
+        App::Push<CustomComponentProcessingStepsEditor>(m_direct_url_steps, "Direct URL Processing Steps");
+    } else if (m_component.source_type == "github_release" &&
+               row.type == RowType::AssetPattern && row.index < m_assets.size()) {
+        m_selected_asset = row.index;
+        App::Push<CustomComponentProcessingStepsEditor>(
+            m_assets[row.index].processing_steps,
+            "Asset Processing Steps " + std::to_string(row.index + 1));
+    }
+}
+
+void CustomComponentEditor::UpdateSourceActions() {
+    if (m_tab != Tab::Source || m_rows.empty() || m_index < 0 ||
+        static_cast<size_t>(m_index) >= m_rows.size()) {
+        RemoveAction(Button::SELECT);
+        RemoveAction(Button::X);
+        RemoveAction(Button::Y);
+        return;
+    }
+
+    const auto& row = m_rows[m_index];
+    if ((m_component.source_type == "direct_url" && row.type == RowType::SourceLocation) ||
+        (m_component.source_type == "github_release" && row.type == RowType::AssetPattern)) {
+        SetAction(Button::SELECT, Action{"Processing Steps"_i18n, [this](){
+            OpenSelectedSteps();
+        }});
+    } else {
+        RemoveAction(Button::SELECT);
+    }
+
+    if (m_component.source_type == "github_release") {
+        SetAction(Button::X, Action{"Add Asset"_i18n, [this](){
+            OnAdd();
+        }});
+    } else {
+        RemoveAction(Button::X);
+    }
+
+    if (row.type == RowType::AssetPattern) {
+        SetAction(Button::Y, Action{"Remove Asset"_i18n, [this](){
+            OnRemove();
+        }});
+    } else {
+        RemoveAction(Button::Y);
     }
 }
 
@@ -425,48 +625,6 @@ void CustomComponentEditor::EditText(std::string& value, const std::string& titl
     }
 }
 
-void CustomComponentEditor::EditStep(size_t index, std::vector<catalog::ProcessingStep>& steps) {
-    if (index >= steps.size()) {
-        return;
-    }
-
-    ui::PopupList::Items items{
-        "Change Step Type",
-        "Target Path",
-        "Subfolder Name",
-        "Source File Pattern",
-        "Target Filename",
-    };
-    App::Push<ui::PopupList>("Processing Step", items, [this, index, &steps](auto selected) {
-        if (!selected || *selected < 0) {
-            return;
-        }
-
-        auto& step = steps[index];
-        switch (*selected) {
-            case 0: {
-                ui::PopupList::Items names(std::begin(STEP_NAMES), std::end(STEP_NAMES));
-                const auto current = std::find(std::begin(STEP_TYPES), std::end(STEP_TYPES), step.type);
-                const auto current_index = current == std::end(STEP_TYPES) ? 0 : std::distance(std::begin(STEP_TYPES), current);
-                App::Push<ui::PopupList>("Step Type", names, [this, index, &steps](auto type_index) {
-                    if (type_index && *type_index >= 0 && static_cast<size_t>(*type_index) < std::size(STEP_TYPES) &&
-                        index < steps.size()) {
-                        steps[index].type = STEP_TYPES[*type_index];
-                        BuildRows();
-                    }
-                }, current_index);
-                break;
-            }
-            case 1: EditText(step.target_path, "Target Path"); break;
-            case 2: EditText(step.subfolder_name, "Subfolder Name"); break;
-            case 3: EditText(step.source_file_pattern, "Source File Pattern"); break;
-            case 4: EditText(step.target_filename, "Target Filename"); break;
-            default: break;
-        }
-        BuildRows();
-    });
-}
-
 std::string CustomComponentEditor::GetRowValue(const Row& row) const {
     switch (row.type) {
         case RowType::ComponentId: return m_component.id;
@@ -474,40 +632,21 @@ std::string CustomComponentEditor::GetRowValue(const Row& row) const {
         case RowType::Category: return m_component.category;
         case RowType::Description: return m_component.description;
         case RowType::SourceType: return m_component.source_type == "direct_url" ? "Direct URL" : "GitHub Release";
-        case RowType::SourceLocation: return m_component.repo;
+        case RowType::SourceLocation:
+            if (m_component.source_type == "direct_url") {
+                return m_component.repo + "\n" + std::to_string(m_direct_url_steps.size()) + " steps (press - to configure)";
+            }
+            return m_component.repo;
         case RowType::AssetPattern:
-            return row.index < m_assets.size() ? m_assets[row.index].pattern : std::string{};
-        case RowType::ProcessingStep: {
-            const auto* steps = GetSelectedSteps();
-            return steps && row.index < steps->size() ? GetStepName((*steps)[row.index].type) : std::string{};
-        }
-        case RowType::AddAssetPattern:
-        case RowType::AssetStepsInfo:
-        case RowType::DirectStepsHeader:
-        case RowType::AddProcessingStep:
+            if (row.index < m_assets.size()) {
+                return m_assets[row.index].pattern + "\n" +
+                    std::to_string(m_assets[row.index].processing_steps.size()) + " steps (press - to configure)";
+            }
+            return {};
+        case RowType::NoAssetsInfo:
             return {};
     }
     return {};
-}
-
-std::vector<catalog::ProcessingStep>* CustomComponentEditor::GetSelectedSteps() {
-    if (m_component.source_type == "direct_url") {
-        return &m_direct_url_steps;
-    }
-    if (m_assets.empty() || m_selected_asset >= m_assets.size()) {
-        return nullptr;
-    }
-    return &m_assets[m_selected_asset].processing_steps;
-}
-
-const std::vector<catalog::ProcessingStep>* CustomComponentEditor::GetSelectedSteps() const {
-    if (m_component.source_type == "direct_url") {
-        return &m_direct_url_steps;
-    }
-    if (m_assets.empty() || m_selected_asset >= m_assets.size()) {
-        return nullptr;
-    }
-    return &m_assets[m_selected_asset].processing_steps;
 }
 
 } // namespace sphaira::ui::menu::hats
