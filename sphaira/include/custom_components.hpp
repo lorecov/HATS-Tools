@@ -1,8 +1,9 @@
 #pragma once
 
+#include "custom_catalog.hpp"
 #include "manifest.hpp"
+
 #include <string>
-#include <vector>
 #include <map>
 #include <set>
 
@@ -28,12 +29,8 @@ bool AddNewComponent();
 // Riceve l'ID del singolo componente selezionato e permette di modificarne le impostazioni
 bool ModifySelectedComponent(const std::string& component_id);
 
-// Helpers for managing the catalog file
-
 bool EnsureDirectories();
 bool CleanStagingArea();
 bool EnsureCatalogExists();
-bool LoadCatalog(std::string& json);
-bool SaveCatalog(const std::string& json);
 
 } // namespace sphaira::custom

@@ -1,0 +1,57 @@
+#pragma once
+
+#include <map>
+#include <string>
+#include <vector>
+
+namespace sphaira::custom::catalog {
+
+enum class StepType {
+    UnzipToRoot,
+    UnzipToPath,
+    UnzipSubfolderToPath,
+    CopyFile,
+    CopyFileToAutoFolder,
+    FindAndRename,
+    DeleteFile,
+};
+
+struct ProcessingStep {
+    StepType type{StepType::UnzipToRoot};
+    std::string target_path;
+    std::string subfolder_name;
+    std::string source_file_pattern;
+    std::string target_filename;
+};
+
+struct CustomComponent {
+    std::string id;
+    std::string name;
+    std::string description;
+    std::string category;
+    std::string source_type;
+    std::string repo;
+    std::string version;
+    std::string latest_version;
+    std::string fixed_version;
+    bool fixed_version_enabled{};
+    bool update_available{};
+    std::vector<std::string> asset_patterns;
+    std::vector<ProcessingStep> processing_steps;
+};
+
+struct Catalog {
+    std::map<std::string, CustomComponent> components;
+};
+
+inline constexpr char CATALOG_PATH[] = "/config/hats-tools/custom-components/manager/components.json";
+
+bool LoadCatalog(Catalog& out);
+bool SaveCatalog(const Catalog& catalog);
+
+CustomComponent* FindComponent(Catalog& catalog, const std::string& id);
+const CustomComponent* FindComponent(const Catalog& catalog, const std::string& id);
+bool UpsertComponent(Catalog& catalog, CustomComponent component);
+bool RemoveComponent(Catalog& catalog, const std::string& id);
+
+} // namespace sphaira::custom::catalog

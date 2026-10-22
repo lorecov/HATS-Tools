@@ -130,6 +130,7 @@ add_executable(hats-tools
     # HATS Tools utilities
     source/hats_version.cpp
     source/manifest.cpp
+    source/custom_catalog.cpp
     source/custom_components.cpp
     source/nxlink.cpp
     source/owo.cpp
