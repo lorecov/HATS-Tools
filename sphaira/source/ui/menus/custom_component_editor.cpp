@@ -219,8 +219,8 @@ void CustomComponentProcessingStepsEditor::Update(Controller* controller, TouchI
 void CustomComponentProcessingStepsEditor::Draw(NVGcontext* vg, Theme* theme) {
     MenuBase::Draw(vg, theme);
     if (m_steps.empty()) {
-        gfx::drawTextArgs(vg, 95.f, GetY() + 105.f, 21.f,
-            NVG_ALIGN_LEFT | NVG_ALIGN_TOP, theme->GetColour(ThemeEntryID_TEXT_INFO),
+        gfx::drawTextArgs(vg, SCREEN_WIDTH / 2.f, SCREEN_HEIGHT / 2.f, 21.f,
+            NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, theme->GetColour(ThemeEntryID_TEXT_INFO),
             "No processing steps. Press %s to add one.", gfx::getButton(Button::X));
         return;
     }
@@ -636,7 +636,7 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
         const auto message = "No asset patterns. Press " + std::string{gfx::getButton(Button::X)} + " to add one.";
         const float empty_area_top = GetY() + 103.f + 2.f * 58.f;
         const float empty_area_bottom = m_button_pos.y - 35.f;
-        const float empty_area_center_y = (empty_area_top + empty_area_bottom) / 2.f;
+        const float empty_area_center_y = (empty_area_top + empty_area_bottom) / 2.f - 8.f;
         const float list_center_x = 75.f + (1220.f - 150.f) / 2.f;
         gfx::drawTextArgs(vg, list_center_x, empty_area_center_y, 21.f,
             NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, theme->GetColour(ThemeEntryID_TEXT_INFO),
