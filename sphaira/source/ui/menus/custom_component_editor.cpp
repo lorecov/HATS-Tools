@@ -509,10 +509,10 @@ CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component,
         std::make_pair(Button::SELECT, Action{"Processing Steps"_i18n, [this](){
             OpenSelectedSteps();
         }}),
-        std::make_pair(Button::L, Action{"Details"_i18n, [this](){
+        std::make_pair(Button::L2, Action{"Details"_i18n, [this](){
             SetTab(Tab::Details);
         }}),
-        std::make_pair(Button::R, Action{"Source"_i18n, [this](){
+        std::make_pair(Button::R2, Action{"Source"_i18n, [this](){
             SetTab(Tab::Source);
         }}),
         std::make_pair(Button::START, Action{"Save"_i18n, [this](){
@@ -668,13 +668,14 @@ void CustomComponentEditor::DrawTabs(NVGcontext* vg, Theme* theme) const {
             NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE,
             theme->GetColour(active ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT),
             "%s", title);
-        gfx::drawTextArgs(vg, x + 20.f, y + height / 2.f, 22.f,
-            NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE,
+        const bool left_tab = button == Button::L2;
+        gfx::drawTextArgs(vg, left_tab ? x + 20.f : x + tab_w - 20.f, y + height / 2.f, 22.f,
+            left_tab ? NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE : NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE,
             theme->GetColour(ThemeEntryID_TEXT_INFO), "%s", gfx::getButton(button));
     };
 
-    draw_tab(start_x, m_tab == Tab::Details, "Component Details", Button::L);
-    draw_tab(start_x + tab_w + 20.f, m_tab == Tab::Source, "Source Information", Button::R);
+    draw_tab(start_x, m_tab == Tab::Details, "Component Details", Button::L2);
+    draw_tab(start_x + tab_w + 20.f, m_tab == Tab::Source, "Source Information", Button::R2);
 }
 
 void CustomComponentEditor::BuildRows() {
