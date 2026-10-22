@@ -34,7 +34,8 @@ struct CustomComponentProcessingStepsEditor final : MenuBase {
 
 private:
     void SetIndex(s64 index);
-    void EditStep(size_t index);
+    void ChooseStepType(size_t index, bool add_step);
+    void ConfigureStep(size_t index);
     void AddStep();
     void RemoveStep();
     void MoveStep(s64 direction);

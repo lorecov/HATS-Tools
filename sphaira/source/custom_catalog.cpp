@@ -20,6 +20,7 @@ const char* step_type_to_string(StepType type) {
         case StepType::CopyFileToAutoFolder: return "copy_file_to_auto_folder";
         case StepType::FindAndRename: return "find_and_rename";
         case StepType::DeleteFile: return "delete_file";
+        case StepType::FindAndCopy: return "find_and_copy";
     }
     return nullptr;
 }
@@ -39,6 +40,8 @@ bool step_type_from_string(const char* name, StepType& type) {
         type = StepType::FindAndRename;
     } else if (!std::strcmp(name, "delete_file")) {
         type = StepType::DeleteFile;
+    } else if (!std::strcmp(name, "find_and_copy")) {
+        type = StepType::FindAndCopy;
     } else {
         return false;
     }

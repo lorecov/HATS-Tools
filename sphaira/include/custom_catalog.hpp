@@ -14,6 +14,7 @@ enum class StepType {
     CopyFileToAutoFolder,
     FindAndRename,
     DeleteFile,
+    FindAndCopy,
 };
 
 struct ProcessingStep {

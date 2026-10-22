@@ -26,21 +26,23 @@ constexpr const char* CATEGORIES[]{
 constexpr const char* STEP_NAMES[]{
     "Unzip to Root",
     "Unzip to Path",
-    "Unzip Subfolder to Path",
     "Copy File",
     "Copy File to Auto Folder",
     "Find and Rename",
     "Delete File",
+    "Find and Copy",
+    "Unzip Subfolder to Path",
 };
 
 constexpr catalog::StepType STEP_TYPES[]{
     catalog::StepType::UnzipToRoot,
     catalog::StepType::UnzipToPath,
-    catalog::StepType::UnzipSubfolderToPath,
     catalog::StepType::CopyFile,
     catalog::StepType::CopyFileToAutoFolder,
     catalog::StepType::FindAndRename,
     catalog::StepType::DeleteFile,
+    catalog::StepType::FindAndCopy,
+    catalog::StepType::UnzipSubfolderToPath,
 };
 
 const char* GetStepName(catalog::StepType type) {
@@ -59,13 +61,18 @@ CustomComponentProcessingStepsEditor::CustomComponentProcessingStepsEditor(
     : MenuBase{std::move(title), MenuFlag_None}
     , m_steps{steps} {
     SetActions(
-        std::make_pair(Button::A, Action{"Edit"_i18n, [this](){
+        std::make_pair(Button::A, Action{"Change Type"_i18n, [this](){
             if (m_index >= 0 && static_cast<size_t>(m_index) < m_steps.size()) {
-                EditStep(m_index);
+                ChooseStepType(m_index, false);
             }
         }}),
         std::make_pair(Button::B, Action{"Back"_i18n, [this](){
             SetPop();
+        }}),
+        std::make_pair(Button::SELECT, Action{"Configure"_i18n, [this](){
+            if (m_index >= 0 && static_cast<size_t>(m_index) < m_steps.size()) {
+                ConfigureStep(m_index);
+            }
         }}),
         std::make_pair(Button::X, Action{"Add Step"_i18n, [this](){
             AddStep();
@@ -127,59 +134,73 @@ void CustomComponentProcessingStepsEditor::SetIndex(s64 index) {
     }
 }
 
-void CustomComponentProcessingStepsEditor::EditStep(size_t index) {
+void CustomComponentProcessingStepsEditor::ChooseStepType(size_t index, bool add_step) {
+    if (!add_step && index >= m_steps.size()) {
+        return;
+    }
+
+    const ui::PopupList::Items names(std::begin(STEP_NAMES), std::end(STEP_NAMES));
+    const auto current = add_step
+        ? std::begin(STEP_TYPES)
+        : std::find(std::begin(STEP_TYPES), std::end(STEP_TYPES), m_steps[index].type);
+    const auto current_index = current == std::end(STEP_TYPES)
+        ? 0
+        : std::distance(std::begin(STEP_TYPES), current);
+
+    App::Push<ui::PopupList>("Step Type", names, [this, index, add_step](auto selected) {
+        if (!selected || *selected < 0 || static_cast<size_t>(*selected) >= std::size(STEP_TYPES)) {
+            return;
+        }
+
+        auto step_index = index;
+        if (add_step) {
+            m_steps.emplace_back();
+            step_index = m_steps.size() - 1;
+            SetIndex(static_cast<s64>(step_index));
+        } else if (step_index >= m_steps.size()) {
+            return;
+        }
+
+        m_steps[step_index].type = STEP_TYPES[*selected];
+        ConfigureStep(step_index);
+    }, current_index);
+}
+
+void CustomComponentProcessingStepsEditor::ConfigureStep(size_t index) {
     if (index >= m_steps.size()) {
         return;
     }
 
-    const ui::PopupList::Items items{
-        "Change Step Type",
-        "Target Path",
-        "Subfolder Name",
-        "Source File Pattern",
-        "Target Filename",
-    };
-    App::Push<ui::PopupList>("Processing Step", items, [this, index](auto selected) {
-        if (!selected || *selected < 0 || index >= m_steps.size()) {
-            return;
-        }
-
-        auto& step = m_steps[index];
-        switch (*selected) {
-            case 0: {
-                const ui::PopupList::Items names(std::begin(STEP_NAMES), std::end(STEP_NAMES));
-                const auto current = std::find(std::begin(STEP_TYPES), std::end(STEP_TYPES), step.type);
-                const auto current_index = current == std::end(STEP_TYPES) ? 0 : std::distance(std::begin(STEP_TYPES), current);
-                App::Push<ui::PopupList>("Step Type", names, [this, index](auto type_index) {
-                    if (type_index && *type_index >= 0 && static_cast<size_t>(*type_index) < std::size(STEP_TYPES) &&
-                        index < m_steps.size()) {
-                        m_steps[index].type = STEP_TYPES[*type_index];
-                    }
-                }, current_index);
-                break;
-            }
-            case 1:
-                EditText(step.target_path, "Target Path");
-                break;
-            case 2:
-                EditText(step.subfolder_name, "Subfolder Name");
-                break;
-            case 3:
-                EditText(step.source_file_pattern, "Source File Pattern");
-                break;
-            case 4:
-                EditText(step.target_filename, "Target Filename");
-                break;
-            default:
-                break;
-        }
-    });
+    auto& step = m_steps[index];
+    switch (step.type) {
+        case catalog::StepType::UnzipToRoot:
+            break;
+        case catalog::StepType::UnzipToPath:
+        case catalog::StepType::CopyFile:
+        case catalog::StepType::CopyFileToAutoFolder:
+            EditText(step.target_path, "Target Path");
+            break;
+        case catalog::StepType::FindAndRename:
+            EditText(step.source_file_pattern, "Source File Pattern");
+            EditText(step.target_path, "Target Path");
+            EditText(step.target_filename, "Target Filename");
+            break;
+        case catalog::StepType::DeleteFile:
+            EditText(step.target_path, "Path to Delete");
+            break;
+        case catalog::StepType::FindAndCopy:
+            EditText(step.source_file_pattern, "Source File Pattern");
+            EditText(step.target_path, "Target Path");
+            break;
+        case catalog::StepType::UnzipSubfolderToPath:
+            EditText(step.subfolder_name, "Source Subfolder");
+            EditText(step.target_path, "Target Path (optional)");
+            break;
+    }
 }
 
 void CustomComponentProcessingStepsEditor::AddStep() {
-    m_steps.emplace_back();
-    SetIndex(static_cast<s64>(m_steps.size()) - 1);
-    EditStep(m_index);
+    ChooseStepType(m_steps.size(), true);
 }
 
 void CustomComponentProcessingStepsEditor::RemoveStep() {
@@ -217,11 +238,48 @@ void CustomComponentProcessingStepsEditor::DrawStep(NVGcontext* vg, Theme* theme
         "%zu. %s", index + 1, GetStepName(step.type));
 
     std::string parameters;
-    if (!step.target_path.empty()) parameters = "Target: " + step.target_path;
-    if (!step.subfolder_name.empty()) parameters += (parameters.empty() ? "" : "  |  ") + std::string{"Subfolder: "} + step.subfolder_name;
-    if (!step.source_file_pattern.empty()) parameters += (parameters.empty() ? "" : "  |  ") + std::string{"Source: "} + step.source_file_pattern;
-    if (!step.target_filename.empty()) parameters += (parameters.empty() ? "" : "  |  ") + std::string{"Filename: "} + step.target_filename;
-    if (parameters.empty()) parameters = "Press A to configure";
+    const auto append_parameter = [&parameters](const char* label, const std::string& value) {
+        if (!value.empty()) {
+            if (!parameters.empty()) {
+                parameters += "  |  ";
+            }
+            parameters += label;
+            parameters += ": ";
+            parameters += value;
+        }
+    };
+
+    switch (step.type) {
+        case catalog::StepType::UnzipToRoot:
+            break;
+        case catalog::StepType::UnzipToPath:
+        case catalog::StepType::CopyFile:
+        case catalog::StepType::CopyFileToAutoFolder:
+            append_parameter("Target Path", step.target_path);
+            break;
+        case catalog::StepType::FindAndRename:
+            append_parameter("Source File Pattern", step.source_file_pattern);
+            append_parameter("Target Path", step.target_path);
+            append_parameter("Target Filename", step.target_filename);
+            break;
+        case catalog::StepType::DeleteFile:
+            append_parameter("Path to delete", step.target_path);
+            break;
+        case catalog::StepType::FindAndCopy:
+            append_parameter("Source File Pattern", step.source_file_pattern);
+            append_parameter("Target Path", step.target_path);
+            break;
+        case catalog::StepType::UnzipSubfolderToPath:
+            append_parameter("Source Subfolder", step.subfolder_name);
+            append_parameter("Target Path", step.target_path);
+            break;
+    }
+    if (parameters.empty()) parameters = "No additional values";
+    parameters += "  |  Press ";
+    parameters += gfx::getButton(Button::A);
+    parameters += " to change type, ";
+    parameters += gfx::getButton(Button::SELECT);
+    parameters += " to configure";
 
     gfx::drawTextBox(vg, x + 20.f, y + 40.f, 15.f, w - 40.f,
         theme->GetColour(ThemeEntryID_TEXT_INFO), parameters.c_str(),
