@@ -87,6 +87,9 @@ private:
     void OnAdd();
     void OnRemove();
     void OnSave();
+    void RequestBack();
+    bool HasUnsavedChanges() const;
+    CustomComponentEditorDraft BuildDraft() const;
     void EditText(std::string& value, const std::string& title);
     void OpenSelectedSteps();
     void UpdateSourceActions();
@@ -99,6 +102,7 @@ private:
     std::vector<Row> m_rows;
     std::unique_ptr<List> m_list;
     SaveCallback m_on_save;
+    CustomComponentEditorDraft m_initial_draft;
     Tab m_tab{Tab::Details};
     s64 m_index{};
     size_t m_selected_asset{};

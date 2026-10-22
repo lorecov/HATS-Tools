@@ -55,6 +55,26 @@ const char* GetStepName(catalog::StepType type) {
     return "Unknown";
 }
 
+bool ProcessingStepsEqual(
+    const std::vector<catalog::ProcessingStep>& lhs,
+    const std::vector<catalog::ProcessingStep>& rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        const auto& left = lhs[i];
+        const auto& right = rhs[i];
+        if (left.type != right.type ||
+            left.target_path != right.target_path ||
+            left.subfolder_name != right.subfolder_name ||
+            left.source_file_pattern != right.source_file_pattern ||
+            left.target_filename != right.target_filename) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class ProcessingStepValuesEditor final : public ui::Widget {
 public:
     using Field = std::pair<std::string, std::string*>;
@@ -478,7 +498,7 @@ CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component,
             OnSelect();
         }}),
         std::make_pair(Button::B, Action{"Back"_i18n, [this](){
-            SetPop();
+            RequestBack();
         }}),
         std::make_pair(Button::X, Action{"Add Asset"_i18n, [this](){
             OnAdd();
@@ -505,6 +525,7 @@ CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component,
     m_list->SetLayout(List::Layout::GRID);
     BuildRows();
     UpdateSourceActions();
+    m_initial_draft = BuildDraft();
 }
 
 void CustomComponentEditor::Update(Controller* controller, TouchInfo* touch) {
@@ -575,20 +596,39 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
             std::string prompt;
             if (row.type == RowType::AssetPattern && row.index < m_assets.size()) {
                 title = m_assets[row.index].pattern;
-                prompt = std::to_string(m_assets[row.index].processing_steps.size()) +
-                    " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
+                if (title.empty()) {
+                    prompt = "Press " + std::string{gfx::getButton(Button::A)} + " to enter asset pattern";
+                } else {
+                    prompt = std::to_string(m_assets[row.index].processing_steps.size()) +
+                        " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
+                }
             } else if (row.type == RowType::SourceLocation) {
                 title = m_component.repo;
-                prompt = std::to_string(m_direct_url_steps.size()) +
-                    " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
+                if (title.empty()) {
+                    prompt = "Press " + std::string{gfx::getButton(Button::A)} + " to enter Direct URL";
+                } else {
+                    prompt = std::to_string(m_direct_url_steps.size()) +
+                        " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
+                }
             }
-            gfx::drawTextBox(vg, x + 20.f, y + 8.f, 18.f, w - 40.f,
-                value_colour, title.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
-            gfx::drawTextBox(vg, x + 20.f, y + 34.f, 15.f, w - 40.f,
-                value_colour, prompt.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+            if (!title.empty()) {
+                gfx::drawTextBox(vg, x + 20.f, y + 8.f, 18.f, w - 40.f,
+                    value_colour, title.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+                gfx::drawTextBox(vg, x + 20.f, y + 34.f, 15.f, w - 40.f,
+                    value_colour, prompt.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+            } else {
+                gfx::drawTextBox(vg, x + 20.f, y + 18.f, 15.f, w - 40.f,
+                    value_colour, prompt.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+            }
         } else if (!value.empty()) {
             gfx::drawTextBox(vg, x + w * 0.42f, y + 18.f, 18.f, w * 0.56f,
                 value_colour, value.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+        } else {
+            const auto prompt = row.type == RowType::Category
+                ? "Press " + std::string{gfx::getButton(Button::A)} + " to select category"
+                : "Press " + std::string{gfx::getButton(Button::A)} + " to enter value";
+            gfx::drawTextBox(vg, x + w * 0.42f, y + 18.f, 15.f, w * 0.56f,
+                value_colour, prompt.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
         }
     });
 
@@ -839,24 +879,117 @@ void CustomComponentEditor::UpdateSourceActions() {
 }
 
 void CustomComponentEditor::OnSave() {
+    if (m_component.id.empty()) {
+        App::Notify("Component ID is required");
+        return;
+    }
+    if (m_component.name.empty()) {
+        App::Notify("Name is required");
+        return;
+    }
+    if (m_component.category.empty()) {
+        App::Notify("Category is required");
+        return;
+    }
+
+    if (m_component.source_type == "github_release") {
+        if (m_component.repo.empty()) {
+            App::Notify("GitHub Repo is required");
+            return;
+        }
+        if (m_assets.empty()) {
+            App::Notify("At least one asset is required");
+            return;
+        }
+        for (size_t i = 0; i < m_assets.size(); ++i) {
+            if (m_assets[i].processing_steps.empty()) {
+                App::Notify("Asset " + std::to_string(i + 1) + " needs at least one saved processing step");
+                return;
+            }
+        }
+    } else if (m_component.source_type == "direct_url") {
+        if (m_component.repo.empty()) {
+            App::Notify("Direct URL is required");
+            return;
+        }
+        if (m_direct_url_steps.empty()) {
+            App::Notify("Direct URL needs at least one saved processing step");
+            return;
+        }
+    }
+
     if (!m_on_save) {
         App::Notify("Save action is not connected");
         return;
     }
 
+    const auto draft = BuildDraft();
+    m_on_save(draft);
+    SetPop();
+}
+
+void CustomComponentEditor::RequestBack() {
+    if (!HasUnsavedChanges()) {
+        SetPop();
+        return;
+    }
+
+    App::Push<ui::OptionBox>("Exit without saving component changes?",
+        "Exit without saving", "Continue editing", 1, [this](auto selected) {
+            if (selected && *selected == 0) {
+                SetPop();
+            }
+        });
+}
+
+bool CustomComponentEditor::HasUnsavedChanges() const {
+    const auto current = BuildDraft();
+    const auto& lhs = current.component;
+    const auto& rhs = m_initial_draft.component;
+    if (lhs.id != rhs.id ||
+        lhs.name != rhs.name ||
+        lhs.description != rhs.description ||
+        lhs.category != rhs.category ||
+        lhs.source_type != rhs.source_type ||
+        lhs.repo != rhs.repo ||
+        lhs.version != rhs.version ||
+        lhs.latest_version != rhs.latest_version ||
+        lhs.fixed_version != rhs.fixed_version ||
+        lhs.fixed_version_enabled != rhs.fixed_version_enabled ||
+        lhs.update_available != rhs.update_available ||
+        lhs.asset_patterns != rhs.asset_patterns ||
+        current.direct_url_steps.size() != m_initial_draft.direct_url_steps.size() ||
+        !ProcessingStepsEqual(current.direct_url_steps, m_initial_draft.direct_url_steps) ||
+        current.assets.size() != m_initial_draft.assets.size()) {
+        return true;
+    }
+
+    for (size_t i = 0; i < current.assets.size(); ++i) {
+        if (current.assets[i].pattern != m_initial_draft.assets[i].pattern ||
+            !ProcessingStepsEqual(current.assets[i].processing_steps, m_initial_draft.assets[i].processing_steps)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+CustomComponentEditorDraft CustomComponentEditor::BuildDraft() const {
     CustomComponentEditorDraft draft;
     draft.component = m_component;
     draft.component.asset_patterns.clear();
     for (const auto& asset : m_assets) {
         draft.component.asset_patterns.push_back(asset.pattern);
     }
-    draft.component.processing_steps = m_component.source_type == "direct_url"
-        ? m_direct_url_steps
-        : (m_assets.empty() ? std::vector<catalog::ProcessingStep>{} : m_assets[m_selected_asset].processing_steps);
+    if (m_component.source_type == "direct_url") {
+        draft.component.processing_steps = m_direct_url_steps;
+    } else if (m_selected_asset < m_assets.size()) {
+        draft.component.processing_steps = m_assets[m_selected_asset].processing_steps;
+    } else {
+        draft.component.processing_steps.clear();
+    }
     draft.assets = m_assets;
     draft.direct_url_steps = m_direct_url_steps;
-    m_on_save(draft);
-    SetPop();
+    return draft;
 }
 
 void CustomComponentEditor::EditText(std::string& value, const std::string& title) {
