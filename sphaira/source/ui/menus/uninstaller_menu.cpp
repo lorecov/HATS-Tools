@@ -385,6 +385,23 @@ void UninstallerMenu::LoadComponents() {
 
     const bool is_custom = (m_tab == ComponentTab::Custom);
 
+    if (is_custom && !manifest::exists(true)) {
+        fs::FsNativeSd fs;
+        if (R_FAILED(fs.GetFsOpenResult()) ||
+            R_FAILED(fs.CreateDirectoryRecursively("/config/hats-tools/custom-components/"))) {
+            m_error_message = "Failed to prepare custom component directory";
+            m_loaded = true;
+            return;
+        }
+
+        manifest::Manifest empty_manifest;
+        if (!manifest::save(empty_manifest, true)) {
+            m_error_message = "Failed to create custom_manifest.json";
+            m_loaded = true;
+            return;
+        }
+    }
+
     if (!manifest::exists(is_custom)) {
         m_error_message = is_custom ? 
                           "No custom_manifest.json found on SD card" : 
