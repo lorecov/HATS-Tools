@@ -194,6 +194,112 @@ yyjson_mut_val* component_to_json(yyjson_mut_doc* doc, const CustomComponent& co
     return value;
 }
 
+yyjson_mut_val* processing_step_to_json(yyjson_mut_doc* doc, const ProcessingStep& step) {
+    const auto* action = step_type_to_string(step.type);
+    auto* value = yyjson_mut_obj(doc);
+    if (!action || !value || !yyjson_mut_obj_add_str(doc, value, "action", action)) {
+        return nullptr;
+    }
+
+    switch (step.type) {
+        case StepType::UnzipToRoot:
+            break;
+        case StepType::UnzipToPath:
+        case StepType::CopyFile:
+        case StepType::CopyFileToAutoFolder:
+            if (!yyjson_mut_obj_add_str(doc, value, "target_path", step.target_path.c_str())) {
+                return nullptr;
+            }
+            break;
+        case StepType::FindAndRename:
+        case StepType::FindAndCopy:
+            if (!yyjson_mut_obj_add_str(doc, value, "source_file_pattern", step.source_file_pattern.c_str()) ||
+                !yyjson_mut_obj_add_str(doc, value, "target_path", step.target_path.c_str())) {
+                return nullptr;
+            }
+            if (step.type == StepType::FindAndRename &&
+                !yyjson_mut_obj_add_str(doc, value, "target_filename", step.target_filename.c_str())) {
+                return nullptr;
+            }
+            break;
+        case StepType::DeleteFile:
+            if (!yyjson_mut_obj_add_str(doc, value, "path", step.target_path.c_str())) {
+                return nullptr;
+            }
+            break;
+        case StepType::UnzipSubfolderToPath:
+            if (!yyjson_mut_obj_add_str(doc, value, "subfolder_name", step.subfolder_name.c_str())) {
+                return nullptr;
+            }
+            if (!step.target_path.empty() &&
+                !yyjson_mut_obj_add_str(doc, value, "target_path", step.target_path.c_str())) {
+                return nullptr;
+            }
+            break;
+    }
+    return value;
+}
+
+bool add_processing_steps(
+    yyjson_mut_doc* doc,
+    yyjson_mut_val* parent,
+    const std::vector<ProcessingStep>& steps) {
+    auto* array = yyjson_mut_arr(doc);
+    if (!array || !yyjson_mut_obj_add_val(doc, parent, "processing_steps", array)) {
+        return false;
+    }
+    for (const auto& step : steps) {
+        auto* value = processing_step_to_json(doc, step);
+        if (!value || !yyjson_mut_arr_add_val(array, value)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+yyjson_mut_val* new_component_to_json(
+    yyjson_mut_doc* doc,
+    const CustomComponent& component,
+    const std::vector<AssetPattern>& assets) {
+    auto* value = yyjson_mut_obj(doc);
+    auto* asset_info = yyjson_mut_obj(doc);
+    if (!value || !asset_info ||
+        !yyjson_mut_obj_add_str(doc, value, "name", component.name.c_str()) ||
+        !yyjson_mut_obj_add_str(doc, value, "description", component.description.c_str()) ||
+        !yyjson_mut_obj_add_str(doc, value, "category", component.category.c_str()) ||
+        !yyjson_mut_obj_add_str(doc, value, "source_type", component.source_type.c_str()) ||
+        !yyjson_mut_obj_add_str(doc, value, "repo", component.repo.c_str()) ||
+        !yyjson_mut_obj_add_str(doc, asset_info, "version", component.version.c_str()) ||
+        !yyjson_mut_obj_add_val(doc, value, "asset_info", asset_info)) {
+        return nullptr;
+    }
+
+    if (component.source_type == "github_release") {
+        auto* patterns = yyjson_mut_arr(doc);
+        if (!patterns || !yyjson_mut_obj_add_val(doc, value, "asset_patterns", patterns)) {
+            return nullptr;
+        }
+        for (const auto& asset : assets) {
+            auto* pattern = yyjson_mut_obj(doc);
+            if (!pattern ||
+                !yyjson_mut_obj_add_str(doc, pattern, "pattern", asset.pattern.c_str()) ||
+                !add_processing_steps(doc, pattern, asset.processing_steps) ||
+                !yyjson_mut_arr_add_val(patterns, pattern)) {
+                return nullptr;
+            }
+        }
+    } else if (component.source_type == "direct_url") {
+        if (!yyjson_mut_obj_add_str(doc, value, "asset_pattern", "not_applicable") ||
+            !add_processing_steps(doc, value, component.processing_steps)) {
+            return nullptr;
+        }
+    } else {
+        return nullptr;
+    }
+
+    return value;
+}
+
 } // namespace
 
 bool LoadCatalog(Catalog& out) {
@@ -273,6 +379,61 @@ bool SaveCatalog(const Catalog& catalog) {
         return false;
     }
 
+    return true;
+}
+
+bool AddComponent(const CustomComponent& component, const std::vector<AssetPattern>& assets) {
+    if (component.id.empty() ||
+        (component.source_type != "github_release" && component.source_type != "direct_url") ||
+        (component.source_type == "github_release" && assets.empty())) {
+        log_write("[CUSTOM_COMPONENTS] invalid component data for catalog insertion\n");
+        return false;
+    }
+
+    if (!::sphaira::custom::EnsureCatalogExists()) {
+        return false;
+    }
+
+    auto* existing_doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
+    if (!existing_doc) {
+        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s before adding component\n", CATALOG_PATH);
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
+
+    const auto* existing_root = yyjson_doc_get_root(existing_doc);
+    if (!yyjson_is_obj(existing_root)) {
+        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
+        return false;
+    }
+    if (yyjson_obj_get(existing_root, component.id.c_str())) {
+        log_write("[CUSTOM_COMPONENTS] component '%s' already exists\n", component.id.c_str());
+        return false;
+    }
+
+    auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
+    if (!doc) {
+        log_write("[CUSTOM_COMPONENTS] failed to copy catalog before adding component\n");
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
+
+    auto* root = yyjson_mut_doc_get_root(doc);
+    auto* value = new_component_to_json(doc, component, assets);
+    if (!value || !yyjson_mut_obj_add_val(doc, root, component.id.c_str(), value)) {
+        log_write("[CUSTOM_COMPONENTS] failed to serialize component '%s'\n", component.id.c_str());
+        return false;
+    }
+
+    if (!::sphaira::custom::EnsureDirectories()) {
+        return false;
+    }
+
+    yyjson_write_err err{};
+    if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
+        log_write("[CUSTOM_COMPONENTS] failed to add component to %s: %s\n", CATALOG_PATH, err.msg);
+        return false;
+    }
     return true;
 }
 

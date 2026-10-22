@@ -925,8 +925,9 @@ void CustomComponentEditor::OnSave() {
     }
 
     const auto draft = BuildDraft();
-    m_on_save(draft);
-    SetPop();
+    if (m_on_save(draft)) {
+        SetPop();
+    }
 }
 
 void CustomComponentEditor::RequestBack() {

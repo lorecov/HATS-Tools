@@ -35,7 +35,27 @@ bool UpdateSelectedComponents(const std::set<std::string>&) {
 }
 
 bool AddNewComponent() {
-    App::Push<ui::menu::hats::CustomComponentEditor>(catalog::CustomComponent{}, true);
+    App::Push<ui::menu::hats::CustomComponentEditor>(
+        catalog::CustomComponent{}, true, [](const ui::menu::hats::CustomComponentEditorDraft& draft) {
+            auto component = draft.component;
+            if (component.source_type == "direct_url") {
+                component.processing_steps = draft.direct_url_steps;
+            }
+
+            std::vector<catalog::AssetPattern> assets;
+            assets.reserve(draft.assets.size());
+            for (const auto& asset : draft.assets) {
+                assets.push_back({asset.pattern, asset.processing_steps});
+            }
+
+            if (!catalog::AddComponent(component, assets)) {
+                App::Notify("Failed to save component. The ID may already exist or the catalog could not be written.");
+                return false;
+            }
+
+            App::Notify("Custom component saved");
+            return true;
+        });
     return true;
 }
 

@@ -51,7 +51,7 @@ private:
 };
 
 struct CustomComponentEditor final : MenuBase {
-    using SaveCallback = std::function<void(const CustomComponentEditorDraft&)>;
+    using SaveCallback = std::function<bool(const CustomComponentEditorDraft&)>;
 
     explicit CustomComponentEditor(catalog::CustomComponent component = {}, bool is_new = true, SaveCallback on_save = {});
 

@@ -25,6 +25,11 @@ struct ProcessingStep {
     std::string target_filename;
 };
 
+struct AssetPattern {
+    std::string pattern;
+    std::vector<ProcessingStep> processing_steps;
+};
+
 struct CustomComponent {
     std::string id;
     std::string name;
@@ -49,6 +54,7 @@ inline constexpr char CATALOG_PATH[] = "/config/hats-tools/custom-components/man
 
 bool LoadCatalog(Catalog& out);
 bool SaveCatalog(const Catalog& catalog);
+bool AddComponent(const CustomComponent& component, const std::vector<AssetPattern>& assets);
 
 CustomComponent* FindComponent(Catalog& catalog, const std::string& id);
 const CustomComponent* FindComponent(const Catalog& catalog, const std::string& id);
