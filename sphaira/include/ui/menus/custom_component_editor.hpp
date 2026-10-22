@@ -69,7 +69,6 @@ private:
         SourceType,
         SourceLocation,
         AssetPattern,
-        NoAssetsInfo,
     };
 
     struct Row {

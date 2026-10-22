@@ -105,9 +105,9 @@ void CustomComponentProcessingStepsEditor::Update(Controller* controller, TouchI
 void CustomComponentProcessingStepsEditor::Draw(NVGcontext* vg, Theme* theme) {
     MenuBase::Draw(vg, theme);
     if (m_steps.empty()) {
-        gfx::drawText(vg, 95.f, GetY() + 105.f, 21.f,
-            "No processing steps. Press X to add one.",
-            nullptr, NVG_ALIGN_LEFT | NVG_ALIGN_TOP, theme->GetColour(ThemeEntryID_TEXT_INFO));
+        gfx::drawTextArgs(vg, 95.f, GetY() + 105.f, 21.f,
+            NVG_ALIGN_LEFT | NVG_ALIGN_TOP, theme->GetColour(ThemeEntryID_TEXT_INFO),
+            "No processing steps. Press %s to add one.", gfx::getButton(Button::X));
         return;
     }
 
@@ -327,6 +327,7 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
         const auto& row = m_rows[index];
         const bool selected = m_index == index;
         const auto label_colour = theme->GetColour(selected ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT);
+        const auto value_colour = theme->GetColour(selected ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT_INFO);
 
         if (selected) {
             gfx::drawRectOutline(vg, theme, 3.f, rect);
@@ -343,18 +344,41 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
             case RowType::SourceType: label = "Source Type"; break;
             case RowType::SourceLocation: label = m_component.source_type == "direct_url" ? "Direct URL" : "GitHub Repo"; break;
             case RowType::AssetPattern: label = "Asset Pattern " + std::to_string(row.index + 1); break;
-            case RowType::NoAssetsInfo: label = "No asset patterns. Press X to add one."; break;
         }
 
         const auto value = GetRowValue(row);
         gfx::drawText(vg, x + 20.f, y + 18.f, 20.f, label.c_str(),
             nullptr, NVG_ALIGN_LEFT | NVG_ALIGN_TOP, label_colour);
-        if (!value.empty()) {
+
+        if (row.type == RowType::AssetPattern ||
+            (row.type == RowType::SourceLocation && m_component.source_type == "direct_url")) {
+            std::string title;
+            std::string prompt;
+            if (row.type == RowType::AssetPattern && row.index < m_assets.size()) {
+                title = m_assets[row.index].pattern;
+                prompt = std::to_string(m_assets[row.index].processing_steps.size()) +
+                    " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
+            } else if (row.type == RowType::SourceLocation) {
+                title = m_component.repo;
+                prompt = std::to_string(m_direct_url_steps.size()) +
+                    " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
+            }
+            gfx::drawTextBox(vg, x + 20.f, y + 5.f, 18.f, w - 40.f,
+                value_colour, title.c_str(), NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+            gfx::drawTextBox(vg, x + 20.f, y + 34.f, 15.f, w - 40.f,
+                value_colour, prompt.c_str(), NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        } else if (!value.empty()) {
             gfx::drawTextBox(vg, x + w * 0.42f, y + 18.f, 18.f, w * 0.56f,
-                theme->GetColour(selected ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT_INFO),
-                value.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
+                value_colour, value.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
         }
     });
+
+    if (m_tab == Tab::Source && m_component.source_type == "github_release" && m_assets.empty()) {
+        const auto message = "No asset patterns. Press " + std::string{gfx::getButton(Button::X)} + " to add one.";
+        gfx::drawText(vg, 95.f, GetY() + 103.f + 2.f * 58.f + 16.f, 21.f,
+            message.c_str(), nullptr, NVG_ALIGN_LEFT | NVG_ALIGN_TOP,
+            theme->GetColour(ThemeEntryID_TEXT_INFO));
+    }
 }
 
 void CustomComponentEditor::DrawTabs(NVGcontext* vg, Theme* theme) const {
@@ -405,9 +429,6 @@ void CustomComponentEditor::BuildRows() {
         if (m_component.source_type == "github_release") {
             for (size_t i = 0; i < m_assets.size(); ++i) {
                 m_rows.push_back({RowType::AssetPattern, i});
-            }
-            if (m_assets.empty()) {
-                m_rows.push_back({RowType::NoAssetsInfo});
             }
         }
     }
@@ -499,8 +520,6 @@ void CustomComponentEditor::OnSelect() {
             break;
         case RowType::AssetPattern:
             EditText(m_assets[row.index].pattern, "Asset Pattern");
-            break;
-        case RowType::NoAssetsInfo:
             break;
     }
 }
@@ -632,18 +651,11 @@ std::string CustomComponentEditor::GetRowValue(const Row& row) const {
         case RowType::Category: return m_component.category;
         case RowType::Description: return m_component.description;
         case RowType::SourceType: return m_component.source_type == "direct_url" ? "Direct URL" : "GitHub Release";
-        case RowType::SourceLocation:
-            if (m_component.source_type == "direct_url") {
-                return m_component.repo + "\n" + std::to_string(m_direct_url_steps.size()) + " steps (press - to configure)";
-            }
-            return m_component.repo;
+        case RowType::SourceLocation: return m_component.repo;
         case RowType::AssetPattern:
             if (row.index < m_assets.size()) {
-                return m_assets[row.index].pattern + "\n" +
-                    std::to_string(m_assets[row.index].processing_steps.size()) + " steps (press - to configure)";
+                return m_assets[row.index].pattern;
             }
-            return {};
-        case RowType::NoAssetsInfo:
             return {};
     }
     return {};
