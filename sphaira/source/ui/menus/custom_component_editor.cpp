@@ -54,6 +54,94 @@ const char* GetStepName(catalog::StepType type) {
     return "Unknown";
 }
 
+class ProcessingStepValuesEditor final : public ui::Widget {
+public:
+    using Field = std::pair<std::string, std::string*>;
+
+    ProcessingStepValuesEditor(std::vector<Field> fields, std::string title)
+        : m_fields{std::move(fields)}
+        , m_title{std::move(title)} {
+        SetActions(
+            std::make_pair(Button::A, Action{"Edit"_i18n, [this](){
+                EditSelected();
+            }}),
+            std::make_pair(Button::B, Action{"Back"_i18n, [this](){
+                SetPop();
+            }})
+        );
+
+        m_pos = {0.f, SCREEN_HEIGHT - 80.f - 140.f - 300.f, SCREEN_WIDTH, 80.f + 140.f + 300.f};
+        const float line_top = m_pos.y + 70.f;
+        const float line_bottom = SCREEN_HEIGHT - 73.f;
+        const Vec4 list_bounds{0.f, line_top, SCREEN_WIDTH, line_bottom - line_top};
+        const Vec4 list_pos{280.f, line_top + 43.f, SCREEN_HEIGHT, 60.f};
+        m_list = std::make_unique<List>(1, 6, list_bounds, list_pos);
+    }
+
+    void Update(Controller* controller, TouchInfo* touch) override {
+        Widget::Update(controller, touch);
+        if (m_fields.empty()) {
+            return;
+        }
+
+        m_list->OnUpdate(controller, touch, m_index, m_fields.size(), [this](bool touched, auto index) {
+            if (touched && m_index == index) {
+                FireAction(Button::A);
+            } else {
+                App::PlaySoundEffect(SoundEffect::Focus);
+                m_index = index;
+            }
+        });
+    }
+
+    void Draw(NVGcontext* vg, Theme* theme) override {
+        gfx::dimBackground(vg);
+        gfx::drawRect(vg, m_pos, theme->GetColour(ThemeEntryID_POPUP));
+        gfx::drawText(vg, m_pos.x + 70.f, m_pos.y + 28.f, 24.f,
+            theme->GetColour(ThemeEntryID_TEXT), m_title.c_str());
+        const float line_top = m_pos.y + 70.f;
+        const float line_bottom = SCREEN_HEIGHT - 73.f;
+        gfx::drawRect(vg, 30.f, line_top, 1220.f, 1.f, theme->GetColour(ThemeEntryID_LINE));
+        gfx::drawRect(vg, 30.f, line_bottom, 1220.f, 1.f, theme->GetColour(ThemeEntryID_LINE));
+
+        m_list->Draw(vg, theme, m_fields.size(), [this](auto* vg, auto* theme, const auto& rect, auto index) {
+            const auto& [x, y, w, h] = rect;
+            const bool selected = m_index == static_cast<s64>(index);
+            const auto colour = theme->GetColour(selected ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT);
+            if (selected) {
+                gfx::drawRectOutline(vg, theme, 4.f, rect);
+            } else if (index + 1 < m_fields.size()) {
+                gfx::drawRect(vg, x, y + h, w, 1.f, theme->GetColour(ThemeEntryID_LINE_SEPARATOR));
+            }
+
+            gfx::drawText(vg, x + 15.f, y + h / 2.f, 20.f, m_fields[index].first.c_str(),
+                nullptr, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE, colour);
+            gfx::drawTextBox(vg, x + w * 0.42f, y + h / 2.f, 18.f, w * 0.56f,
+                theme->GetColour(selected ? ThemeEntryID_TEXT_SELECTED : ThemeEntryID_TEXT_INFO),
+                m_fields[index].second->c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        });
+        Widget::Draw(vg, theme);
+    }
+
+private:
+    void EditSelected() {
+        if (m_index < 0 || static_cast<size_t>(m_index) >= m_fields.size()) {
+            return;
+        }
+
+        auto& [label, value] = m_fields[m_index];
+        std::string updated;
+        if (R_SUCCEEDED(swkbd::ShowText(updated, label.c_str(), label.c_str(), value->c_str(), 0, 512))) {
+            *value = std::move(updated);
+        }
+    }
+
+    std::vector<Field> m_fields;
+    std::string m_title;
+    std::unique_ptr<List> m_list;
+    s64 m_index{};
+};
+
 } // namespace
 
 CustomComponentProcessingStepsEditor::CustomComponentProcessingStepsEditor(
@@ -169,15 +257,8 @@ void CustomComponentProcessingStepsEditor::ConfigureStep(size_t index) {
         return;
     }
 
-    enum class Field {
-        SourceSubfolder,
-        SourceFilePattern,
-        TargetPath,
-        TargetFilename,
-    };
-
-    std::vector<Field> fields;
-    ui::PopupList::Items items;
+    std::vector<ProcessingStepValuesEditor::Field> fields;
+    auto& step = m_steps[index];
     switch (m_steps[index].type) {
         case catalog::StepType::UnzipToRoot:
             App::Notify("This step has no configurable values");
@@ -185,57 +266,27 @@ void CustomComponentProcessingStepsEditor::ConfigureStep(size_t index) {
         case catalog::StepType::UnzipToPath:
         case catalog::StepType::CopyFile:
         case catalog::StepType::CopyFileToAutoFolder:
-            items.emplace_back("Target Path");
-            fields.push_back(Field::TargetPath);
+            fields.emplace_back("Target Path", &step.target_path);
             break;
         case catalog::StepType::FindAndRename:
-            items.emplace_back("Source File Pattern");
-            fields.push_back(Field::SourceFilePattern);
-            items.emplace_back("Target Path");
-            fields.push_back(Field::TargetPath);
-            items.emplace_back("Target Filename");
-            fields.push_back(Field::TargetFilename);
+            fields.emplace_back("Source File Pattern", &step.source_file_pattern);
+            fields.emplace_back("Target Path", &step.target_path);
+            fields.emplace_back("Target Filename", &step.target_filename);
             break;
         case catalog::StepType::DeleteFile:
-            items.emplace_back("Path to Delete");
-            fields.push_back(Field::TargetPath);
+            fields.emplace_back("Path to Delete", &step.target_path);
             break;
         case catalog::StepType::FindAndCopy:
-            items.emplace_back("Source File Pattern");
-            fields.push_back(Field::SourceFilePattern);
-            items.emplace_back("Target Path");
-            fields.push_back(Field::TargetPath);
+            fields.emplace_back("Source File Pattern", &step.source_file_pattern);
+            fields.emplace_back("Target Path", &step.target_path);
             break;
         case catalog::StepType::UnzipSubfolderToPath:
-            items.emplace_back("Source Subfolder");
-            fields.push_back(Field::SourceSubfolder);
-            items.emplace_back("Target Path (optional)");
-            fields.push_back(Field::TargetPath);
+            fields.emplace_back("Source Subfolder", &step.subfolder_name);
+            fields.emplace_back("Target Path (optional)", &step.target_path);
             break;
     }
 
-    App::Push<ui::PopupList>("Processing Step Values", items, [this, index, fields](auto selected) {
-        if (!selected || *selected < 0 || static_cast<size_t>(*selected) >= fields.size() ||
-            index >= m_steps.size()) {
-            return;
-        }
-
-        auto& step = m_steps[index];
-        switch (fields[*selected]) {
-            case Field::SourceSubfolder:
-                EditText(step.subfolder_name, "Source Subfolder");
-                break;
-            case Field::SourceFilePattern:
-                EditText(step.source_file_pattern, "Source File Pattern");
-                break;
-            case Field::TargetPath:
-                EditText(step.target_path, "Target Path");
-                break;
-            case Field::TargetFilename:
-                EditText(step.target_filename, "Target Filename");
-                break;
-        }
-    });
+    App::Push<ProcessingStepValuesEditor>(std::move(fields), "Processing Step Values");
 }
 
 void CustomComponentProcessingStepsEditor::AddStep() {
