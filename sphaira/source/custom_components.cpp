@@ -3,6 +3,7 @@
 #include "app.hpp"
 #include "custom_catalog.hpp"
 #include "fs.hpp"
+#include "ui/menus/custom_component_editor.hpp"
 
 namespace sphaira::custom {
 
@@ -34,11 +35,7 @@ bool UpdateSelectedComponents(const std::set<std::string>&) {
 }
 
 bool AddNewComponent() {
-    if (!EnsureDirectories() || !EnsureCatalogExists()) {
-        return false;
-    }
-
-    App::Notify("Add New Component (Stub)");
+    App::Push<ui::menu::hats::CustomComponentEditor>(catalog::CustomComponent{}, true);
     return true;
 }
 
