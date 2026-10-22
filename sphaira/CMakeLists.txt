@@ -97,7 +97,7 @@ add_executable(hats-tools
     source/ui/menus/pack_details_menu.cpp
     source/ui/menus/firmware_menu.cpp
     source/ui/menus/uninstaller_menu.cpp
-    source/ui/menus/custom_tools_menu.cpp
+    source/ui/menus/custom_component_editor.cpp
     source/ui/menus/cheats_menu.cpp
 
     source/ui/error_box.cpp
