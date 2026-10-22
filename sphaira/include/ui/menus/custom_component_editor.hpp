@@ -38,11 +38,12 @@ private:
     void ConfigureStep(size_t index);
     void AddStep();
     void RemoveStep();
-    void MoveStep(s64 direction);
+    void SaveSteps();
     void EditText(std::string& value, const std::string& title);
     void DrawStep(NVGcontext* vg, Theme* theme, const Vec4& rect, size_t index) const;
 
-    std::vector<catalog::ProcessingStep>& m_steps;
+    std::vector<catalog::ProcessingStep>& m_target_steps;
+    std::vector<catalog::ProcessingStep> m_steps;
     std::unique_ptr<List> m_list;
     s64 m_index{};
 };
