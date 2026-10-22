@@ -401,7 +401,7 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
     }
     ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
 
-    const auto* existing_root = yyjson_doc_get_root(existing_doc);
+    auto* existing_root = yyjson_doc_get_root(existing_doc);
     if (!yyjson_is_obj(existing_root)) {
         log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
         return false;
