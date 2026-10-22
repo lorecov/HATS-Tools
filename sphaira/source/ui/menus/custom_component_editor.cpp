@@ -363,10 +363,10 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
                 prompt = std::to_string(m_direct_url_steps.size()) +
                     " steps (press " + gfx::getButton(Button::SELECT) + " to configure)";
             }
-            gfx::drawTextBox(vg, x + 20.f, y + 5.f, 18.f, w - 40.f,
-                value_colour, title.c_str(), NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+            gfx::drawTextBox(vg, x + 20.f, y + 8.f, 18.f, w - 40.f,
+                value_colour, title.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
             gfx::drawTextBox(vg, x + 20.f, y + 34.f, 15.f, w - 40.f,
-                value_colour, prompt.c_str(), NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+                value_colour, prompt.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
         } else if (!value.empty()) {
             gfx::drawTextBox(vg, x + w * 0.42f, y + 18.f, 18.f, w * 0.56f,
                 value_colour, value.c_str(), NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
@@ -375,9 +375,13 @@ void CustomComponentEditor::Draw(NVGcontext* vg, Theme* theme) {
 
     if (m_tab == Tab::Source && m_component.source_type == "github_release" && m_assets.empty()) {
         const auto message = "No asset patterns. Press " + std::string{gfx::getButton(Button::X)} + " to add one.";
-        gfx::drawText(vg, 95.f, GetY() + 103.f + 2.f * 58.f + 16.f, 21.f,
-            message.c_str(), nullptr, NVG_ALIGN_LEFT | NVG_ALIGN_TOP,
-            theme->GetColour(ThemeEntryID_TEXT_INFO));
+        const float empty_area_top = GetY() + 103.f + 2.f * 58.f;
+        const float empty_area_bottom = m_button_pos.y - 35.f;
+        const float empty_area_center_y = (empty_area_top + empty_area_bottom) / 2.f;
+        const float list_center_x = 75.f + (1220.f - 150.f) / 2.f;
+        gfx::drawTextArgs(vg, list_center_x, empty_area_center_y, 21.f,
+            NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE, theme->GetColour(ThemeEntryID_TEXT_INFO),
+            "%s", message.c_str());
     }
 }
 
