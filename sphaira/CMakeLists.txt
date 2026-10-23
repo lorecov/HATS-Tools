@@ -132,6 +132,7 @@ add_executable(hats-tools
     source/manifest.cpp
     source/custom_catalog.cpp
     source/custom_components.cpp
+    source/custom_component_updater.cpp
     source/nxlink.cpp
     source/owo.cpp
     source/swkbd.cpp
