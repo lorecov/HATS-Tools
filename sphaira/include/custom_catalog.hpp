@@ -38,8 +38,15 @@ struct CustomComponent {
     std::string source_type;
     std::string repo;
     std::string version;
+    std::string latest_version;
     std::vector<std::string> asset_patterns;
     std::vector<ProcessingStep> processing_steps;
+};
+
+struct GitHubVersionEntry {
+    std::string id;
+    std::string repo;
+    std::string latest_version;
 };
 
 struct Catalog {
@@ -54,6 +61,8 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
 bool LoadComponent(const std::string& id, CustomComponent& component, std::vector<AssetPattern>& assets);
 bool UpdateComponent(const std::string& id, const CustomComponent& component, const std::vector<AssetPattern>& assets);
 bool RemoveComponentsFromCatalog(const std::vector<std::string>& ids);
+bool LoadGitHubVersionEntries(std::vector<GitHubVersionEntry>& entries);
+bool SaveLatestVersions(const std::map<std::string, std::string>& versions);
 
 CustomComponent* FindComponent(Catalog& catalog, const std::string& id);
 const CustomComponent* FindComponent(const Catalog& catalog, const std::string& id);

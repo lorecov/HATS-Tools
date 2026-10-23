@@ -2,20 +2,273 @@
 
 #include "app.hpp"
 #include "custom_catalog.hpp"
+#include "download.hpp"
 #include "fs.hpp"
 #include "log.hpp"
 #include "ui/menus/custom_component_editor.hpp"
+#include "ui/progress_box.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <map>
+#include <memory>
+#include <string_view>
 #include <utility>
+#include <yyjson.h>
 
 namespace sphaira::custom {
+namespace {
+
+struct FetchVersionsResult {
+    size_t total{};
+    size_t updated{};
+    size_t failed{};
+    bool cancelled{};
+    bool fatal_error{};
+};
+
+bool IsRepoCharacter(char character) {
+    const auto value = static_cast<unsigned char>(character);
+    return std::isalnum(value) || character == '-' || character == '_' || character == '.';
+}
+
+bool ParseGitHubRepo(std::string repo, std::string& owner, std::string& name) {
+    constexpr std::string_view https_prefix{"https://github.com/"};
+    constexpr std::string_view http_prefix{"http://github.com/"};
+    if (repo.starts_with(https_prefix)) {
+        repo.erase(0, https_prefix.size());
+    } else if (repo.starts_with(http_prefix)) {
+        repo.erase(0, http_prefix.size());
+    }
+    while (!repo.empty() && repo.back() == '/') {
+        repo.pop_back();
+    }
+    if (repo.ends_with(".git")) {
+        repo.resize(repo.size() - 4);
+    }
+
+    const auto slash = repo.find('/');
+    if (slash == std::string::npos || slash == 0 || slash == repo.size() - 1 ||
+        repo.find('/', slash + 1) != std::string::npos) {
+        return false;
+    }
+
+    owner = repo.substr(0, slash);
+    name = repo.substr(slash + 1);
+    const auto valid_segment = [](const std::string& segment) {
+        if (segment == "." || segment == "..") {
+            return false;
+        }
+        return std::all_of(segment.begin(), segment.end(), IsRepoCharacter);
+    };
+    return valid_segment(owner) && valid_segment(name);
+}
+
+bool FetchLatestTag(ui::ProgressBox* progress, const std::string& repo, std::string& tag) {
+    std::string owner;
+    std::string name;
+    if (!ParseGitHubRepo(repo, owner, name)) {
+        log_write("[CUSTOM_COMPONENTS] invalid GitHub repository '%s'\n", repo.c_str());
+        return false;
+    }
+
+    const auto result = curl::Api().ToMemory(
+        curl::Url{"https://api.github.com/repos/" + owner + "/" + name + "/releases/latest"},
+        curl::Header{{"Accept", "application/vnd.github+json"}},
+        curl::OnProgress{progress->OnDownloadProgressCallback()});
+    if (!result.success || result.data.empty()) {
+        log_write("[CUSTOM_COMPONENTS] failed to fetch latest release for %s/%s (HTTP %ld)\n",
+                  owner.c_str(), name.c_str(), result.code);
+        return false;
+    }
+
+    auto* doc = yyjson_read(
+        reinterpret_cast<const char*>(result.data.data()), result.data.size(), YYJSON_READ_NOFLAG);
+    if (!doc) {
+        log_write("[CUSTOM_COMPONENTS] invalid release JSON for %s/%s\n", owner.c_str(), name.c_str());
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_doc_free(doc));
+
+    auto* root = yyjson_doc_get_root(doc);
+    if (!yyjson_is_obj(root)) {
+        log_write("[CUSTOM_COMPONENTS] latest release for %s/%s returned an invalid JSON root\n",
+                  owner.c_str(), name.c_str());
+        return false;
+    }
+    auto* tag_value = yyjson_obj_get(root, "tag_name");
+    if (!yyjson_is_str(tag_value)) {
+        log_write("[CUSTOM_COMPONENTS] latest release for %s/%s has no tag_name\n",
+                  owner.c_str(), name.c_str());
+        return false;
+    }
+
+    const auto* tag_name = yyjson_get_str(tag_value);
+    if (!tag_name || !*tag_name) {
+        log_write("[CUSTOM_COMPONENTS] latest release for %s/%s has an empty tag_name\n",
+                  owner.c_str(), name.c_str());
+        return false;
+    }
+    tag = tag_name;
+    return true;
+}
+
+std::string FormatManifestVersion(const std::string& current_version, const std::string& latest_version) {
+    constexpr std::string_view separator{" ---> "};
+    const auto separator_pos = current_version.find(separator);
+    auto installed_version = current_version.substr(0, separator_pos);
+    if (installed_version.empty()) {
+        installed_version = "not installed";
+    }
+    return installed_version + std::string{separator} + latest_version;
+}
+
+Result RunFetchVersions(ui::ProgressBox* progress, FetchVersionsResult& result) {
+    std::vector<catalog::GitHubVersionEntry> entries;
+    if (!catalog::LoadGitHubVersionEntries(entries)) {
+        result.fatal_error = true;
+        return 0x1;
+    }
+    result.total = entries.size();
+
+    std::map<std::string, std::string> latest_versions;
+    std::map<std::string, std::string> previous_versions;
+    for (size_t i = 0; i < entries.size(); ++i) {
+        if (progress->ShouldExit()) {
+            result.cancelled = true;
+            break;
+        }
+
+        const auto& entry = entries[i];
+        progress->NewTransfer("Checking " + entry.repo + " (" +
+                              std::to_string(i + 1) + "/" + std::to_string(entries.size()) + ")");
+        std::string tag;
+        if (!FetchLatestTag(progress, entry.repo, tag)) {
+            if (progress->ShouldExit()) {
+                result.cancelled = true;
+                break;
+            }
+            ++result.failed;
+            continue;
+        }
+        latest_versions.emplace(entry.id, std::move(tag));
+        previous_versions.emplace(entry.id, entry.latest_version);
+    }
+
+    if (latest_versions.empty()) {
+        return result.failed || result.cancelled ? 0x1 : 0;
+    }
+
+    manifest::Manifest custom_manifest;
+    if (!manifest::load(custom_manifest, true)) {
+        log_write("[CUSTOM_COMPONENTS] failed to load custom manifest before saving fetched versions\n");
+        ++result.failed;
+        result.fatal_error = true;
+        return 0x1;
+    }
+    manifest::DisabledComponents disabled_components;
+    if (!manifest::loadDisabled(disabled_components, true)) {
+        log_write("[CUSTOM_COMPONENTS] failed to load disabled custom components before saving fetched versions\n");
+        ++result.failed;
+        result.fatal_error = true;
+        return 0x1;
+    }
+
+    const auto original_manifest = custom_manifest;
+    const auto original_disabled = disabled_components;
+    bool manifest_changed = false;
+    bool disabled_changed = false;
+    size_t matched_components = 0;
+    for (const auto& [id, latest_version] : latest_versions) {
+        if (auto it = custom_manifest.components.find(id); it != custom_manifest.components.end()) {
+            const auto updated = FormatManifestVersion(it->second.version, latest_version);
+            if (updated != it->second.version) {
+                it->second.version = updated;
+                manifest_changed = true;
+            }
+            ++matched_components;
+        } else if (auto it = disabled_components.components.find(id); it != disabled_components.components.end()) {
+            const auto updated = FormatManifestVersion(it->second.version, latest_version);
+            if (updated != it->second.version) {
+                it->second.version = updated;
+                disabled_changed = true;
+            }
+            ++matched_components;
+        } else {
+            log_write("[CUSTOM_COMPONENTS] component '%s' is missing from custom manifests\n", id.c_str());
+            ++result.failed;
+        }
+    }
+
+    if (manifest_changed && !manifest::save(custom_manifest, true)) {
+        log_write("[CUSTOM_COMPONENTS] failed to save custom manifest with fetched versions\n");
+        ++result.failed;
+        result.fatal_error = true;
+        if (!manifest::save(original_manifest, true)) {
+            log_write("[CUSTOM_COMPONENTS] failed to restore custom manifest after save failure\n");
+        }
+        return 0x1;
+    }
+    if (disabled_changed && !manifest::saveDisabled(disabled_components, true)) {
+        log_write("[CUSTOM_COMPONENTS] failed to save disabled custom components with fetched versions\n");
+        ++result.failed;
+        result.fatal_error = true;
+        if (manifest_changed && !manifest::save(original_manifest, true)) {
+            log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest after save failure\n");
+        }
+        if (!manifest::saveDisabled(original_disabled, true)) {
+            log_write("[CUSTOM_COMPONENTS] failed to restore disabled custom components after save failure\n");
+        }
+        return 0x1;
+    }
+
+    if (!catalog::SaveLatestVersions(latest_versions)) {
+        log_write("[CUSTOM_COMPONENTS] failed to save fetched versions to the custom catalog\n");
+        ++result.failed;
+        result.fatal_error = true;
+        if (manifest_changed && !manifest::save(original_manifest, true)) {
+            log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest after catalog save failure\n");
+        }
+        if (disabled_changed && !manifest::saveDisabled(original_disabled, true)) {
+            log_write("[CUSTOM_COMPONENTS] failed to rollback disabled custom components after catalog save failure\n");
+        }
+        if (!catalog::SaveLatestVersions(previous_versions)) {
+            log_write("[CUSTOM_COMPONENTS] failed to rollback fetched versions in the custom catalog\n");
+        }
+        return 0x1;
+    }
+
+    result.updated = matched_components;
+    return result.failed || result.cancelled ? 0x1 : 0;
+}
+
+} // namespace
 
 bool FetchVersions(const std::map<std::string, manifest::Component>&) {
     if (!EnsureDirectories() || !EnsureCatalogExists()) {
         return false;
     }
 
-    App::Notify("Fetch Versions (Stub)");
+    auto result = std::make_shared<FetchVersionsResult>();
+    App::Push<ui::ProgressBox>(
+        0, "Checking", "Custom component versions",
+        [result](auto progress) -> Result {
+            return RunFetchVersions(progress, *result);
+        },
+        [result](Result rc) {
+            if (result->fatal_error) {
+                App::Notify("Failed to fetch custom component versions");
+            } else if (result->total == 0) {
+                App::Notify("No GitHub custom components to check");
+            } else if (R_SUCCEEDED(rc)) {
+                App::Notify("Fetched versions for " + std::to_string(result->updated) + " custom component(s)");
+            } else {
+                App::Notify("Fetched versions for " + std::to_string(result->updated) + " of " +
+                            std::to_string(result->total) + " component(s); " +
+                            std::to_string(result->failed) + " failed" +
+                            (result->cancelled ? " (cancelled)" : ""));
+            }
+        });
     return true;
 }
 
