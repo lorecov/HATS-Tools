@@ -38,6 +38,10 @@ bool UpdateSelectedComponents(const std::set<std::string>&) {
 }
 
 bool AddNewComponent() {
+    if (auto* app = App::GetApp()) {
+        app->m_touch_info.is_tap = false;
+    }
+
     App::Push<ui::menu::hats::CustomComponentEditor>(
         catalog::CustomComponent{}, true, [](const ui::menu::hats::CustomComponentEditorDraft& draft) {
             auto component = draft.component;

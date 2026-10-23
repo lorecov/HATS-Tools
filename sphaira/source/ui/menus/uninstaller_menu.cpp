@@ -171,6 +171,35 @@ UninstallerMenu::~UninstallerMenu() {
 void UninstallerMenu::Update(Controller* controller, TouchInfo* touch) {
     MenuBase::Update(controller, touch);
 
+    if (touch && touch->is_clicked) {
+        const float tab_y = GetY() + 38.f;
+        const float tab_height = 42.f;
+        const float start_x = 75.f;
+        const float tab_w = (1220.f - 150.f - 20.f) / 2.f;
+        const float custom_x = start_x + tab_w + 20.f;
+        const float pill_w = 125.f;
+        const float pill_h = 30.f;
+        const float pill_x = custom_x + (tab_w - pill_w) / 2.f;
+
+        if (touch->in_range(static_cast<s32>(start_x), static_cast<s32>(tab_y),
+                            static_cast<s32>(tab_w), static_cast<s32>(tab_height))) {
+            SwitchTab(ComponentTab::Hats);
+            return;
+        }
+        if (touch->in_range(static_cast<s32>(pill_x), static_cast<s32>(tab_y - pill_h + 1.f),
+                            static_cast<s32>(pill_w), static_cast<s32>(pill_h))) {
+            if (m_tab == ComponentTab::Custom) {
+                OpenCustomToolsSidebar();
+                return;
+            }
+        }
+        if (touch->in_range(static_cast<s32>(custom_x), static_cast<s32>(tab_y),
+                            static_cast<s32>(tab_w), static_cast<s32>(tab_height))) {
+            SwitchTab(ComponentTab::Custom);
+            return;
+        }
+    }
+
     if (!m_items.empty()) {
         m_list->OnUpdate(controller, touch, m_index, m_items.size(), [this](bool touch, auto i) {
             if (touch && m_index == i) {
