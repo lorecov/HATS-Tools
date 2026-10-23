@@ -437,6 +437,40 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
     return true;
 }
 
+bool RemoveComponentsFromCatalog(const std::vector<std::string>& ids) {
+    if (ids.empty()) {
+        return true;
+    }
+
+    auto* existing_doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
+    if (!existing_doc) {
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
+
+    auto* existing_root = yyjson_doc_get_root(existing_doc);
+    if (!yyjson_is_obj(existing_root)) {
+        return false;
+    }
+
+    auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
+    if (!doc) {
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
+
+    auto* root = yyjson_mut_doc_get_root(doc);
+    for (const auto& id : ids) {
+        yyjson_mut_obj_remove_str(root, id.c_str());
+    }
+
+    yyjson_write_err err{};
+    if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
+        return false;
+    }
+    return true;
+}
+
 CustomComponent* FindComponent(Catalog& catalog, const std::string& id) {
     const auto it = catalog.components.find(id);
     return it != catalog.components.end() ? &it->second : nullptr;

@@ -12,6 +12,7 @@
 #include "i18n.hpp"
 #include "manifest.hpp"
 #include "custom_components.hpp"
+#include "custom_catalog.hpp"
 #include <algorithm>
 
 namespace sphaira::ui::menu::hats {
@@ -42,6 +43,7 @@ auto ProcessComponents(ProgressBox* pbox, manifest::Manifest& manifest,
     size_t current = 0;
     int success_count = 0;
     int failed_count = 0;
+    std::vector<std::string> removed_custom_ids;
 
     for (const auto& id : ids) {
         if (pbox->ShouldExit()) {
@@ -90,6 +92,11 @@ auto ProcessComponents(ProgressBox* pbox, manifest::Manifest& manifest,
         } else {
             log_write("[COMPONENTS] successfully processed component %s\n", id.c_str());
             success_count++;
+            if (is_custom &&
+                (operation == ComponentOperation::DeleteInstalled ||
+                 operation == ComponentOperation::DeleteDisabled)) {
+                removed_custom_ids.push_back(id);
+            }
         }
     }
 
@@ -103,6 +110,11 @@ auto ProcessComponents(ProgressBox* pbox, manifest::Manifest& manifest,
 
     if (!manifest::saveDisabled(disabled, is_custom)) {
         log_write("[COMPONENTS] failed to save disabled components\n");
+        return 0x1;
+    }
+
+    if (is_custom && !removed_custom_ids.empty() &&
+        !custom::catalog::RemoveComponentsFromCatalog(removed_custom_ids)) {
         return 0x1;
     }
 
