@@ -4,7 +4,6 @@
 #include "custom_catalog.hpp"
 #include "download.hpp"
 #include "fs.hpp"
-#include "log.hpp"
 #include "ui/menus/custom_component_editor.hpp"
 #include "ui/progress_box.hpp"
 
@@ -68,7 +67,6 @@ bool FetchLatestTag(ui::ProgressBox* progress, const std::string& repo, std::str
     std::string owner;
     std::string name;
     if (!ParseGitHubRepo(repo, owner, name)) {
-        log_write("[CUSTOM_COMPONENTS] invalid GitHub repository '%s'\n", repo.c_str());
         return false;
     }
 
@@ -77,36 +75,27 @@ bool FetchLatestTag(ui::ProgressBox* progress, const std::string& repo, std::str
         curl::Header{{"Accept", "application/vnd.github+json"}},
         curl::OnProgress{progress->OnDownloadProgressCallback()});
     if (!result.success || result.data.empty()) {
-        log_write("[CUSTOM_COMPONENTS] failed to fetch latest release for %s/%s (HTTP %ld)\n",
-                  owner.c_str(), name.c_str(), result.code);
         return false;
     }
 
     auto* doc = yyjson_read(
         reinterpret_cast<const char*>(result.data.data()), result.data.size(), YYJSON_READ_NOFLAG);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] invalid release JSON for %s/%s\n", owner.c_str(), name.c_str());
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(doc));
 
     auto* root = yyjson_doc_get_root(doc);
     if (!yyjson_is_obj(root)) {
-        log_write("[CUSTOM_COMPONENTS] latest release for %s/%s returned an invalid JSON root\n",
-                  owner.c_str(), name.c_str());
         return false;
     }
     auto* tag_value = yyjson_obj_get(root, "tag_name");
     if (!yyjson_is_str(tag_value)) {
-        log_write("[CUSTOM_COMPONENTS] latest release for %s/%s has no tag_name\n",
-                  owner.c_str(), name.c_str());
         return false;
     }
 
     const auto* tag_name = yyjson_get_str(tag_value);
     if (!tag_name || !*tag_name) {
-        log_write("[CUSTOM_COMPONENTS] latest release for %s/%s has an empty tag_name\n",
-                  owner.c_str(), name.c_str());
         return false;
     }
     tag = tag_name;
@@ -161,14 +150,12 @@ Result RunFetchVersions(ui::ProgressBox* progress, FetchVersionsResult& result) 
 
     manifest::Manifest custom_manifest;
     if (!manifest::load(custom_manifest, true)) {
-        log_write("[CUSTOM_COMPONENTS] failed to load custom manifest before saving fetched versions\n");
         ++result.failed;
         result.fatal_error = true;
         return 0x1;
     }
     manifest::DisabledComponents disabled_components;
     if (!manifest::loadDisabled(disabled_components, true)) {
-        log_write("[CUSTOM_COMPONENTS] failed to load disabled custom components before saving fetched versions\n");
         ++result.failed;
         result.fatal_error = true;
         return 0x1;
@@ -195,46 +182,36 @@ Result RunFetchVersions(ui::ProgressBox* progress, FetchVersionsResult& result) 
             }
             ++matched_components;
         } else {
-            log_write("[CUSTOM_COMPONENTS] component '%s' is missing from custom manifests\n", id.c_str());
             ++result.failed;
         }
     }
 
     if (manifest_changed && !manifest::save(custom_manifest, true)) {
-        log_write("[CUSTOM_COMPONENTS] failed to save custom manifest with fetched versions\n");
         ++result.failed;
         result.fatal_error = true;
-        if (!manifest::save(original_manifest, true)) {
-            log_write("[CUSTOM_COMPONENTS] failed to restore custom manifest after save failure\n");
-        }
+        (void)manifest::save(original_manifest, true);
         return 0x1;
     }
     if (disabled_changed && !manifest::saveDisabled(disabled_components, true)) {
-        log_write("[CUSTOM_COMPONENTS] failed to save disabled custom components with fetched versions\n");
         ++result.failed;
         result.fatal_error = true;
-        if (manifest_changed && !manifest::save(original_manifest, true)) {
-            log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest after save failure\n");
+        if (manifest_changed) {
+            (void)manifest::save(original_manifest, true);
         }
-        if (!manifest::saveDisabled(original_disabled, true)) {
-            log_write("[CUSTOM_COMPONENTS] failed to restore disabled custom components after save failure\n");
-        }
+        (void)manifest::saveDisabled(original_disabled, true);
         return 0x1;
     }
 
     if (!catalog::SaveLatestVersions(latest_versions)) {
-        log_write("[CUSTOM_COMPONENTS] failed to save fetched versions to the custom catalog\n");
         ++result.failed;
         result.fatal_error = true;
-        if (manifest_changed && !manifest::save(original_manifest, true)) {
-            log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest after catalog save failure\n");
+        if (manifest_changed) {
+            (void)manifest::save(original_manifest, true);
         }
-        if (disabled_changed && !manifest::saveDisabled(original_disabled, true)) {
-            log_write("[CUSTOM_COMPONENTS] failed to rollback disabled custom components after catalog save failure\n");
+        if (disabled_changed) {
+            (void)manifest::saveDisabled(original_disabled, true);
         }
-        if (!catalog::SaveLatestVersions(previous_versions)) {
-            log_write("[CUSTOM_COMPONENTS] failed to rollback fetched versions in the custom catalog\n");
-        }
+        (void)catalog::SaveLatestVersions(previous_versions);
         return 0x1;
     }
 
@@ -340,7 +317,6 @@ bool AddNewComponent() {
             if (!catalog::AddComponent(component, assets)) {
                 custom_manifest.components.erase(component.id);
                 if (!manifest::save(custom_manifest, true)) {
-                    log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest entry '%s'\n", component.id.c_str());
                     App::Notify("Failed to save components.json and rollback custom_manifest.json");
                     return false;
                 }
@@ -423,7 +399,6 @@ bool ModifySelectedComponent(const std::string& component_id) {
                 custom_manifest.components.erase(updated_component.id);
                 custom_manifest.components.emplace(component_id, original_manifest_component);
                 if (!manifest::save(custom_manifest, true)) {
-                    log_write("[CUSTOM_COMPONENTS] failed to rollback custom manifest update for '%s'\n", component_id.c_str());
                     App::Notify("Failed to save components.json and rollback custom_manifest.json");
                     return false;
                 }

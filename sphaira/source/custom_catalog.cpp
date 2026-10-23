@@ -1,7 +1,6 @@
 #include "custom_catalog.hpp"
 
 #include "custom_components.hpp"
-#include "log.hpp"
 
 #include <cstring>
 #include <utility>
@@ -399,14 +398,12 @@ bool LoadCatalog(Catalog& out) {
 
     auto* doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s\n", CATALOG_PATH);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(doc));
 
     auto* root = yyjson_doc_get_root(doc);
     if (!root || !yyjson_is_obj(root)) {
-        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
         return false;
     }
 
@@ -418,14 +415,12 @@ bool LoadCatalog(Catalog& out) {
         const auto* id = yyjson_get_str(key);
         auto* value = yyjson_obj_iter_get_val(key);
         if (!id || !value) {
-            log_write("[CUSTOM_COMPONENTS] invalid component entry in %s\n", CATALOG_PATH);
             return false;
         }
 
         CustomComponent component;
         component.id = id;
         if (!read_component(value, component)) {
-            log_write("[CUSTOM_COMPONENTS] invalid component '%s' in %s\n", id, CATALOG_PATH);
             return false;
         }
         catalog.components.emplace(component.id, std::move(component));
@@ -438,14 +433,12 @@ bool LoadCatalog(Catalog& out) {
 bool SaveCatalog(const Catalog& catalog) {
     auto* doc = yyjson_mut_doc_new(nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to allocate catalog JSON document\n");
         return false;
     }
     ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
 
     auto* root = yyjson_mut_obj(doc);
     if (!root) {
-        log_write("[CUSTOM_COMPONENTS] failed to allocate catalog JSON root\n");
         return false;
     }
     yyjson_mut_doc_set_root(doc, root);
@@ -453,7 +446,6 @@ bool SaveCatalog(const Catalog& catalog) {
     for (const auto& [id, component] : catalog.components) {
         auto* value = component_to_json(doc, component);
         if (!value || !yyjson_mut_obj_add_val(doc, root, id.c_str(), value)) {
-            log_write("[CUSTOM_COMPONENTS] failed to serialize component '%s'\n", id.c_str());
             return false;
         }
     }
@@ -465,7 +457,6 @@ bool SaveCatalog(const Catalog& catalog) {
     yyjson_write_err err{};
     const bool success = yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err);
     if (!success) {
-        log_write("[CUSTOM_COMPONENTS] failed to save catalog %s: %s\n", CATALOG_PATH, err.msg);
         return false;
     }
 
@@ -476,7 +467,6 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
     if (component.id.empty() ||
         (component.source_type != "github_release" && component.source_type != "direct_url") ||
         (component.source_type == "github_release" && assets.empty())) {
-        log_write("[CUSTOM_COMPONENTS] invalid component data for catalog insertion\n");
         return false;
     }
 
@@ -486,24 +476,20 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
 
     auto* existing_doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!existing_doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s before adding component\n", CATALOG_PATH);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
 
     auto* existing_root = yyjson_doc_get_root(existing_doc);
     if (!yyjson_is_obj(existing_root)) {
-        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
         return false;
     }
     if (yyjson_obj_get(existing_root, component.id.c_str())) {
-        log_write("[CUSTOM_COMPONENTS] component '%s' already exists\n", component.id.c_str());
         return false;
     }
 
     auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to copy catalog before adding component\n");
         return false;
     }
     ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
@@ -511,7 +497,6 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
     auto* root = yyjson_mut_doc_get_root(doc);
     auto* value = new_component_to_json(doc, component, assets);
     if (!value || !yyjson_mut_obj_add_val(doc, root, component.id.c_str(), value)) {
-        log_write("[CUSTOM_COMPONENTS] failed to serialize component '%s'\n", component.id.c_str());
         return false;
     }
 
@@ -521,7 +506,6 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
 
     yyjson_write_err err{};
     if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
-        log_write("[CUSTOM_COMPONENTS] failed to add component to %s: %s\n", CATALOG_PATH, err.msg);
         return false;
     }
     return true;
@@ -530,27 +514,23 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
 bool LoadComponent(const std::string& id, CustomComponent& component, std::vector<AssetPattern>& assets) {
     auto* doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s\n", CATALOG_PATH);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(doc));
 
     auto* root = yyjson_doc_get_root(doc);
     if (!yyjson_is_obj(root)) {
-        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
         return false;
     }
 
     auto* value = yyjson_obj_get(root, id.c_str());
     if (!value) {
-        log_write("[CUSTOM_COMPONENTS] component '%s' not found in catalog\n", id.c_str());
         return false;
     }
 
     CustomComponent loaded_component;
     std::vector<AssetPattern> loaded_assets;
     if (!read_editable_component(id.c_str(), value, loaded_component, loaded_assets)) {
-        log_write("[CUSTOM_COMPONENTS] invalid catalog component '%s'\n", id.c_str());
         return false;
     }
     component = std::move(loaded_component);
@@ -565,30 +545,25 @@ bool UpdateComponent(
     if (id.empty() || component.id.empty() ||
         (component.source_type != "github_release" && component.source_type != "direct_url") ||
         (component.source_type == "github_release" && assets.empty())) {
-        log_write("[CUSTOM_COMPONENTS] invalid component data for catalog update\n");
         return false;
     }
 
     auto* existing_doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!existing_doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s before updating component\n", CATALOG_PATH);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
 
     auto* existing_root = yyjson_doc_get_root(existing_doc);
     if (!yyjson_is_obj(existing_root) || !yyjson_obj_get(existing_root, id.c_str())) {
-        log_write("[CUSTOM_COMPONENTS] component '%s' not found for catalog update\n", id.c_str());
         return false;
     }
     if (id != component.id && yyjson_obj_get(existing_root, component.id.c_str())) {
-        log_write("[CUSTOM_COMPONENTS] component '%s' already exists\n", component.id.c_str());
         return false;
     }
 
     auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to copy catalog before updating component\n");
         return false;
     }
     ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
@@ -597,13 +572,11 @@ bool UpdateComponent(
     yyjson_mut_obj_remove_str(root, id.c_str());
     auto* value = new_component_to_json(doc, component, assets);
     if (!value || !yyjson_mut_obj_add_val(doc, root, component.id.c_str(), value)) {
-        log_write("[CUSTOM_COMPONENTS] failed to serialize updated component '%s'\n", component.id.c_str());
         return false;
     }
 
     yyjson_write_err err{};
     if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
-        log_write("[CUSTOM_COMPONENTS] failed to update component in %s: %s\n", CATALOG_PATH, err.msg);
         return false;
     }
     return true;
@@ -650,14 +623,12 @@ bool LoadGitHubVersionEntries(std::vector<GitHubVersionEntry>& entries) {
 
     auto* doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s before checking versions\n", CATALOG_PATH);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(doc));
 
     auto* root = yyjson_doc_get_root(doc);
     if (!yyjson_is_obj(root)) {
-        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
         return false;
     }
 
@@ -669,13 +640,11 @@ bool LoadGitHubVersionEntries(std::vector<GitHubVersionEntry>& entries) {
         const auto* id = yyjson_get_str(key);
         auto* value = yyjson_obj_iter_get_val(key);
         if (!id || !yyjson_is_obj(value)) {
-            log_write("[CUSTOM_COMPONENTS] invalid component entry in %s\n", CATALOG_PATH);
             return false;
         }
 
         std::string source_type;
         if (!read_string(value, "source_type", source_type)) {
-            log_write("[CUSTOM_COMPONENTS] invalid source_type for component '%s'\n", id);
             return false;
         }
         if (source_type != "github_release") {
@@ -688,7 +657,6 @@ bool LoadGitHubVersionEntries(std::vector<GitHubVersionEntry>& entries) {
         if (!read_string(value, "repo", entry.repo) ||
             !asset_info || !yyjson_is_obj(asset_info) ||
             !read_string(asset_info, "latest_version", entry.latest_version)) {
-            log_write("[CUSTOM_COMPONENTS] invalid version metadata for component '%s'\n", id);
             return false;
         }
         loaded_entries.emplace_back(std::move(entry));
@@ -705,14 +673,12 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
 
     auto* existing_doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
     if (!existing_doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s before saving latest versions\n", CATALOG_PATH);
         return false;
     }
     ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
 
     auto* existing_root = yyjson_doc_get_root(existing_doc);
     if (!yyjson_is_obj(existing_root)) {
-        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
         return false;
     }
 
@@ -724,7 +690,6 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
     for (const auto& [id, _] : versions) {
         auto* component = yyjson_obj_get(existing_root, id.c_str());
         if (!yyjson_is_obj(component)) {
-            log_write("[CUSTOM_COMPONENTS] component '%s' missing or invalid while saving latest version\n", id.c_str());
             return false;
         }
 
@@ -732,13 +697,11 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
         auto* asset_info = yyjson_obj_get(component, "asset_info");
         if (asset_info) {
             if (!yyjson_is_obj(asset_info)) {
-                log_write("[CUSTOM_COMPONENTS] invalid asset_info for component '%s'\n", id.c_str());
                 return false;
             }
             auto* current_version = yyjson_obj_get(asset_info, "version");
             if (current_version) {
                 if (!yyjson_is_str(current_version)) {
-                    log_write("[CUSTOM_COMPONENTS] invalid version metadata for component '%s'\n", id.c_str());
                     return false;
                 }
                 entry.has_version = true;
@@ -756,7 +719,6 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
 
     auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
     if (!doc) {
-        log_write("[CUSTOM_COMPONENTS] failed to copy catalog before saving latest versions\n");
         return false;
     }
     ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
@@ -768,7 +730,6 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
         if (!asset_info) {
             asset_info = yyjson_mut_obj(doc);
             if (!asset_info) {
-                log_write("[CUSTOM_COMPONENTS] failed to allocate version metadata for '%s'\n", id.c_str());
                 return false;
             }
             const auto& old_metadata = metadata.at(id);
@@ -784,14 +745,12 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
 
         yyjson_mut_obj_remove_str(asset_info, "latest_version");
         if (!yyjson_mut_obj_add_str(doc, asset_info, "latest_version", version.c_str())) {
-            log_write("[CUSTOM_COMPONENTS] failed to set latest version for '%s'\n", id.c_str());
             return false;
         }
     }
 
     yyjson_write_err err{};
     if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
-        log_write("[CUSTOM_COMPONENTS] failed to save latest versions to %s: %s\n", CATALOG_PATH, err.msg);
         return false;
     }
     return true;
