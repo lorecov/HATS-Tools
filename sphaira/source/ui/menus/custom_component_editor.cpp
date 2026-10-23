@@ -267,8 +267,8 @@ void CustomComponentProcessingStepsEditor::RequestBack() {
     }
 
     App::Push<ui::OptionBox>("Exit without saving processing steps?",
-        "Exit without saving", "Continue editing", 1, [this](auto selected) {
-            if (selected && *selected == 0) {
+        "Continue editing", "Exit without saving", 0, [this](auto selected) {
+            if (selected && *selected == 1) {
                 SetPop();
             }
         });
@@ -516,10 +516,10 @@ CustomComponentEditor::CustomComponentEditor(
         std::make_pair(Button::SELECT, Action{"Processing Steps"_i18n, [this](){
             OpenSelectedSteps();
         }}),
-        std::make_pair(Button::L2, Action{"Details"_i18n, [this](){
+        std::make_pair(Button::L2, Action{"", [this](){
             SetTab(Tab::Details);
         }}),
-        std::make_pair(Button::R2, Action{"Source"_i18n, [this](){
+        std::make_pair(Button::R2, Action{"", [this](){
             SetTab(Tab::Source);
         }}),
         std::make_pair(Button::START, Action{"Save"_i18n, [this](){
@@ -944,8 +944,8 @@ void CustomComponentEditor::RequestBack() {
     }
 
     App::Push<ui::OptionBox>("Exit without saving component changes?",
-        "Exit without saving", "Continue editing", 1, [this](auto selected) {
-            if (selected && *selected == 0) {
+        "Continue editing", "Exit without saving", 0, [this](auto selected) {
+            if (selected && *selected == 1) {
                 SetPop();
             }
         });
