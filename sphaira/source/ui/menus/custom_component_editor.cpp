@@ -955,10 +955,6 @@ bool CustomComponentEditor::HasUnsavedChanges() const {
         lhs.source_type != rhs.source_type ||
         lhs.repo != rhs.repo ||
         lhs.version != rhs.version ||
-        lhs.latest_version != rhs.latest_version ||
-        lhs.fixed_version != rhs.fixed_version ||
-        lhs.fixed_version_enabled != rhs.fixed_version_enabled ||
-        lhs.update_available != rhs.update_available ||
         lhs.asset_patterns != rhs.asset_patterns ||
         current.direct_url_steps.size() != m_initial_draft.direct_url_steps.size() ||
         !ProcessingStepsEqual(current.direct_url_steps, m_initial_draft.direct_url_steps) ||

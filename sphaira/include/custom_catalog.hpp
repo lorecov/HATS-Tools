@@ -38,10 +38,6 @@ struct CustomComponent {
     std::string source_type;
     std::string repo;
     std::string version;
-    std::string latest_version;
-    std::string fixed_version;
-    bool fixed_version_enabled{};
-    bool update_available{};
     std::vector<std::string> asset_patterns;
     std::vector<ProcessingStep> processing_steps;
 };

@@ -104,11 +104,7 @@ bool read_component(yyjson_val* value, CustomComponent& component) {
         !read_string(value, "category", component.category) ||
         !read_string(value, "source_type", component.source_type) ||
         !read_string(value, "repo", component.repo) ||
-        !read_string(value, "version", component.version) ||
-        !read_string(value, "latest_version", component.latest_version) ||
-        !read_string(value, "fixed_version", component.fixed_version) ||
-        !read_bool(value, "fixed_version_enabled", component.fixed_version_enabled) ||
-        !read_bool(value, "update_available", component.update_available)) {
+        !read_string(value, "version", component.version)) {
         return false;
     }
 
@@ -155,11 +151,7 @@ yyjson_mut_val* component_to_json(yyjson_mut_doc* doc, const CustomComponent& co
         !yyjson_mut_obj_add_str(doc, value, "category", component.category.c_str()) ||
         !yyjson_mut_obj_add_str(doc, value, "source_type", component.source_type.c_str()) ||
         !yyjson_mut_obj_add_str(doc, value, "repo", component.repo.c_str()) ||
-        !yyjson_mut_obj_add_str(doc, value, "version", component.version.c_str()) ||
-        !yyjson_mut_obj_add_str(doc, value, "latest_version", component.latest_version.c_str()) ||
-        !yyjson_mut_obj_add_str(doc, value, "fixed_version", component.fixed_version.c_str()) ||
-        !yyjson_mut_obj_add_bool(doc, value, "fixed_version_enabled", component.fixed_version_enabled) ||
-        !yyjson_mut_obj_add_bool(doc, value, "update_available", component.update_available)) {
+        !yyjson_mut_obj_add_str(doc, value, "version", component.version.c_str())) {
         return nullptr;
     }
 
