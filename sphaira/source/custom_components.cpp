@@ -6,6 +6,7 @@
 #include "fs.hpp"
 #include "threaded_file_transfer.hpp"
 #include "ui/menus/custom_component_editor.hpp"
+#include "ui/option_box.hpp"
 #include "ui/progress_box.hpp"
 
 #include <algorithm>
@@ -52,6 +53,26 @@ struct StagedFile {
 struct FileMove {
     fs::FsPath original;
     fs::FsPath backup;
+    bool is_directory{};
+};
+
+struct PendingComponentUpdate {
+    std::string id;
+    catalog::CustomComponent component;
+    std::vector<catalog::AssetPattern> assets;
+    manifest::Component manifest_component;
+    bool is_disabled{};
+    std::vector<StagedFile> staged_files;
+    std::vector<std::string> conflicts;
+    bool ready{};
+    bool skipped{};
+    bool cancelled{};
+};
+
+struct UpdateOperation {
+    std::vector<std::string> ids;
+    size_t next_id{};
+    UpdateComponentsResult result;
 };
 
 bool IsRepoCharacter(char character) {
@@ -448,7 +469,8 @@ bool PathIsShared(
             }
             for (const auto& file : component.files) {
                 std::string relative;
-                if (NormalizeRelativePath(file, relative) && relative == path) {
+                if (NormalizeRelativePath(file, relative) &&
+                    fs::FsPath::path_equal(relative, path)) {
                     return true;
                 }
             }
@@ -730,6 +752,126 @@ bool ResetStagingArea(fs::Fs* filesystem) {
     return R_SUCCEEDED(filesystem->CreateDirectoryRecursively(staging_path));
 }
 
+bool GetComponentDestination(const PendingComponentUpdate& pending, const std::string& relative, fs::FsPath& path) {
+    if (pending.is_disabled) {
+        return MakeFsPath(
+            JoinPath(JoinPath(manifest::DISABLED_COMPONENTS_DIR_CUSTOM, pending.id), relative), path);
+    }
+    return MakeFsPath("/" + relative, path);
+}
+
+Result StageSelectedComponent(
+    ui::ProgressBox* progress,
+    const std::string& id,
+    PendingComponentUpdate& pending) {
+    auto* app = App::GetApp();
+    if (!app || !app->m_fs || !IsSafePathSegment(id)) {
+        return 0x1;
+    }
+    auto* filesystem = app->m_fs.get();
+    pending.id = id;
+
+    manifest::Manifest active;
+    if (!manifest::load(active, true)) {
+        return 0x1;
+    }
+    manifest::DisabledComponents disabled;
+    if (!manifest::loadDisabled(disabled, true)) {
+        return 0x1;
+    }
+
+    auto active_it = active.components.find(id);
+    auto disabled_it = disabled.components.find(id);
+    pending.is_disabled = active_it == active.components.end() &&
+        disabled_it != disabled.components.end();
+    if (active_it == active.components.end() && !pending.is_disabled) {
+        return 0x1;
+    }
+    pending.manifest_component = pending.is_disabled ? disabled_it->second : active_it->second;
+
+    if (!catalog::LoadComponent(id, pending.component, pending.assets)) {
+        return 0x1;
+    }
+    if (pending.component.source_type != "github_release" ||
+        pending.component.latest_version.empty() ||
+        pending.component.version == pending.component.latest_version) {
+        pending.skipped = true;
+        return 0;
+    }
+
+    constexpr fs::FsPath temporary_root{"/config/hats-tools/custom-components/manager/temp"};
+    constexpr fs::FsPath output_root{"/config/hats-tools/custom-components/manager/temp/output"};
+    if (!ResetStagingArea(filesystem) || R_FAILED(filesystem->CreateDirectoryRecursively(output_root))) {
+        return 0x1;
+    }
+
+    std::vector<ReleaseAsset> release_assets;
+    if (!FetchReleaseAssets(progress, pending.component.repo, pending.component.latest_version, release_assets)) {
+        pending.cancelled = progress->ShouldExit();
+        return 0x1;
+    }
+
+    size_t asset_index = 0;
+    for (const auto& pattern : pending.assets) {
+        const auto match = std::find_if(release_assets.begin(), release_assets.end(), [&pattern](const auto& asset) {
+            return WildcardMatch(pattern.pattern, asset.name);
+        });
+        if (match == release_assets.end()) {
+            return 0x1;
+        }
+
+        fs::FsPath downloaded_asset;
+        if (!MakeFsPath(JoinPath(temporary_root.s, "asset-" + std::to_string(asset_index)), downloaded_asset)) {
+            return 0x1;
+        }
+        progress->NewTransfer("Downloading " + match->name);
+        const auto download = curl::Api().ToFile(
+            curl::Url{match->url},
+            curl::Path{downloaded_asset},
+            curl::OnProgress{progress->OnDownloadProgressCallback()});
+        if (!download.success || progress->ShouldExit() ||
+            R_FAILED(ProcessAsset(progress, filesystem, downloaded_asset, match->name,
+                                  pattern.processing_steps, output_root, temporary_root, asset_index))) {
+            pending.cancelled = progress->ShouldExit();
+            return 0x1;
+        }
+        ++asset_index;
+    }
+
+    if (R_FAILED(EnumerateStagedFiles(filesystem, output_root, pending.staged_files)) ||
+        pending.staged_files.empty()) {
+        return 0x1;
+    }
+
+    std::set<std::string> owned_paths;
+    for (const auto& file : pending.manifest_component.files) {
+        std::string relative;
+        if (!NormalizeRelativePath(file, relative)) {
+            return 0x1;
+        }
+        owned_paths.insert(relative);
+    }
+    for (const auto& staged : pending.staged_files) {
+        fs::FsPath destination;
+        if (!GetComponentDestination(pending, staged.relative_path, destination)) {
+            return 0x1;
+        }
+        if (!filesystem->FileExists(destination) && !filesystem->DirExists(destination)) {
+            continue;
+        }
+        if (owned_paths.contains(staged.relative_path)) {
+            continue;
+        }
+        if (PathIsShared(id, staged.relative_path, active, disabled)) {
+            return 0x1;
+        }
+        pending.conflicts.push_back(staged.relative_path);
+    }
+
+    pending.ready = true;
+    return 0;
+}
+
 bool InstallComponentFiles(
     ui::ProgressBox* progress,
     fs::Fs* filesystem,
@@ -739,6 +881,7 @@ bool InstallComponentFiles(
     const manifest::DisabledComponents& disabled,
     const manifest::Component& current_manifest_component,
     bool is_disabled,
+    const std::set<std::string>& approved_conflicts,
     std::vector<std::string>& new_manifest_files,
     std::vector<FileMove>& backups,
     std::vector<fs::FsPath>& installed_files,
@@ -784,7 +927,36 @@ bool InstallComponentFiles(
         if (R_FAILED(filesystem->RenameFile(original, backup))) {
             return false;
         }
-        backups.push_back({original, backup});
+        backups.push_back({original, backup, false});
+    }
+
+    for (const auto& conflict : approved_conflicts) {
+        if (PathIsShared(pending.id, conflict, active, disabled)) {
+            return false;
+        }
+        fs::FsPath original;
+        if (is_disabled) {
+            if (!MakeFsPath(JoinPath(JoinPath(manifest::DISABLED_COMPONENTS_DIR_CUSTOM, id), conflict), original)) {
+                return false;
+            }
+        } else if (!MakeFsPath("/" + conflict, original)) {
+            return false;
+        }
+        const bool is_directory = filesystem->DirExists(original);
+        if (!is_directory && !filesystem->FileExists(original)) {
+            continue;
+        }
+        fs::FsPath backup;
+        if (!MakeFsPath(JoinPath(backup_root.s, "old-" + std::to_string(backups.size())), backup)) {
+            return false;
+        }
+        const auto rc = is_directory
+            ? filesystem->RenameDirectory(original, backup)
+            : filesystem->RenameFile(original, backup);
+        if (R_FAILED(rc)) {
+            return false;
+        }
+        backups.push_back({original, backup, is_directory});
     }
 
     for (const auto& staged : staged_files) {
@@ -825,12 +997,14 @@ bool RollbackComponentFiles(
     }
     for (auto it = backups.rbegin(); it != backups.rend(); ++it) {
         success &= R_SUCCEEDED(filesystem->CreateDirectoryRecursivelyWithPath(it->original));
-        success &= R_SUCCEEDED(filesystem->RenameFile(it->backup, it->original));
+        success &= R_SUCCEEDED(it->is_directory
+            ? filesystem->RenameDirectory(it->backup, it->original)
+            : filesystem->RenameFile(it->backup, it->original));
     }
     return success;
 }
 
-Result RunUpdateSelectedComponents(
+[[maybe_unused]] Result RunUpdateSelectedComponents(
     ui::ProgressBox* progress,
     const std::set<std::string>& selected_ids,
     UpdateComponentsResult& result) {
@@ -976,7 +1150,7 @@ Result RunUpdateSelectedComponents(
         std::vector<FileMove> backups;
         std::vector<fs::FsPath> installed_files;
         if (!InstallComponentFiles(progress, filesystem, id, staged_files, active, disabled,
-                                   old_manifest_component, is_disabled, new_manifest_files,
+                                   old_manifest_component, is_disabled, {}, new_manifest_files,
                                    backups, installed_files, backup_root)) {
             if (!RollbackComponentFiles(filesystem, backups, installed_files)) {
                 result.fatal_error = true;
@@ -1051,6 +1225,204 @@ Result RunUpdateSelectedComponents(
         return 0x1;
     }
     return result.failed || result.fatal_error ? 0x1 : 0;
+}
+
+Result CommitSelectedComponent(
+    ui::ProgressBox* progress,
+    PendingComponentUpdate& pending,
+    const std::vector<std::string>& approved_conflicts) {
+    auto* app = App::GetApp();
+    if (!app || !app->m_fs) {
+        return 0x1;
+    }
+    auto* filesystem = app->m_fs.get();
+
+    manifest::Manifest active;
+    manifest::DisabledComponents disabled;
+    if (!manifest::load(active, true) || !manifest::loadDisabled(disabled, true)) {
+        return 0x1;
+    }
+
+    constexpr fs::FsPath backup_base{"/config/hats-tools/custom-components/manager/update-backup"};
+    if (!filesystem->DirExists(backup_base) &&
+        R_FAILED(filesystem->CreateDirectoryRecursively(backup_base))) {
+        return 0x1;
+    }
+    fs::FsPath backup_root;
+    if (!MakeFsPath(JoinPath(backup_base.s, pending.id), backup_root) ||
+        filesystem->DirExists(backup_root) ||
+        R_FAILED(filesystem->CreateDirectoryRecursively(backup_root))) {
+        return 0x1;
+    }
+
+    catalog::CustomComponent original_component;
+    std::vector<catalog::AssetPattern> current_assets;
+    if (!catalog::LoadComponent(pending.id, original_component, current_assets)) {
+        filesystem->DeleteDirectoryRecursively(backup_root);
+        return 0x1;
+    }
+
+    auto manifest_component = pending.is_disabled
+        ? disabled.components.find(pending.id)
+        : active.components.find(pending.id);
+    if ((pending.is_disabled && manifest_component == disabled.components.end()) ||
+        (!pending.is_disabled && manifest_component == active.components.end())) {
+        filesystem->DeleteDirectoryRecursively(backup_root);
+        return 0x1;
+    }
+    const auto previous_active = active;
+    const auto previous_disabled = disabled;
+    const auto previous_manifest_component = manifest_component->second;
+
+    std::vector<std::string> new_manifest_files;
+    std::vector<FileMove> backups;
+    std::vector<fs::FsPath> installed_files;
+    const std::set<std::string> approved(approved_conflicts.begin(), approved_conflicts.end());
+    if (!InstallComponentFiles(progress, filesystem, pending.id, pending.staged_files,
+                               active, disabled, previous_manifest_component,
+                               pending.is_disabled, approved, new_manifest_files,
+                               backups, installed_files, backup_root)) {
+        pending.cancelled = progress->ShouldExit();
+        const bool restored = RollbackComponentFiles(filesystem, backups, installed_files);
+        if (!restored) {
+            return 0x2;
+        }
+        const auto cleanup = filesystem->DeleteDirectoryRecursively(backup_root);
+        return R_SUCCEEDED(cleanup) ? 0x1 : 0x2;
+    }
+
+    auto& updated_component = pending.is_disabled
+        ? disabled.components.at(pending.id)
+        : active.components.at(pending.id);
+    updated_component.name = pending.component.name;
+    updated_component.version = pending.component.latest_version;
+    updated_component.category = pending.component.category;
+    updated_component.repo = pending.component.repo;
+    updated_component.files = std::move(new_manifest_files);
+    pending.component.version = pending.component.latest_version;
+
+    const bool manifest_saved = pending.is_disabled
+        ? manifest::saveDisabled(disabled, true)
+        : manifest::save(active, true);
+    const bool catalog_saved = manifest_saved &&
+        catalog::UpdateComponent(pending.id, pending.component, pending.assets);
+    if (!manifest_saved || !catalog_saved) {
+        bool restored = pending.is_disabled
+            ? manifest::saveDisabled(previous_disabled, true)
+            : manifest::save(previous_active, true);
+        restored &= catalog::UpdateComponent(pending.id, original_component, current_assets);
+        restored &= RollbackComponentFiles(filesystem, backups, installed_files);
+        if (!restored) {
+            return 0x2;
+        }
+        const auto cleanup = filesystem->DeleteDirectoryRecursively(backup_root);
+        return R_SUCCEEDED(cleanup) ? 0x1 : 0x2;
+    }
+
+    if (R_FAILED(filesystem->DeleteDirectoryRecursively(backup_root))) {
+        return 0x2;
+    }
+    return 0;
+}
+
+void StartNextSelectedComponent(const std::shared_ptr<UpdateOperation>& operation);
+
+void StartCommitSelectedComponent(
+    const std::shared_ptr<UpdateOperation>& operation,
+    const std::shared_ptr<PendingComponentUpdate>& pending,
+    const std::vector<std::string>& approved_conflicts) {
+    App::Push<ui::ProgressBox>(
+        0, "Installing", pending->component.name,
+        [pending, approved_conflicts](auto progress) -> Result {
+            return CommitSelectedComponent(progress, *pending, approved_conflicts);
+        },
+        [operation, pending](Result rc) {
+            if (pending->cancelled) {
+                operation->result.cancelled = true;
+                (void)CleanStagingArea();
+                App::Notify("Custom component update cancelled");
+                return;
+            }
+            if (R_SUCCEEDED(rc)) {
+                ++operation->result.updated;
+            } else {
+                ++operation->result.failed;
+                operation->result.fatal_error |= rc == 0x2;
+            }
+            (void)CleanStagingArea();
+            StartNextSelectedComponent(operation);
+        });
+}
+
+void PromptForNextConflict(
+    const std::shared_ptr<UpdateOperation>& operation,
+    const std::shared_ptr<PendingComponentUpdate>& pending,
+    const std::shared_ptr<std::vector<std::string>>& approved_conflicts,
+    size_t conflict_index) {
+    if (conflict_index >= pending->conflicts.size()) {
+        StartCommitSelectedComponent(operation, pending, *approved_conflicts);
+        return;
+    }
+
+    const auto path = pending->conflicts[conflict_index];
+    App::Push<ui::OptionBox>(
+        "An existing SD file or folder conflicts with this component:\n/" + path +
+            "\n\nCreate a temporary backup and replace it?",
+        "Cancel update", "Replace", 1,
+        [operation, pending, approved_conflicts, conflict_index](auto selected) {
+            if (!selected || *selected != 1) {
+                ++operation->result.skipped;
+                (void)CleanStagingArea();
+                StartNextSelectedComponent(operation);
+                return;
+            }
+            approved_conflicts->push_back(pending->conflicts[conflict_index]);
+            PromptForNextConflict(operation, pending, approved_conflicts, conflict_index + 1);
+        });
+}
+
+void StartNextSelectedComponent(const std::shared_ptr<UpdateOperation>& operation) {
+    if (operation->next_id >= operation->ids.size()) {
+        const auto& result = operation->result;
+        if (result.fatal_error) {
+            App::Notify("Custom component update failed; check the temporary backup folder");
+        } else {
+            App::Notify("Updated " + std::to_string(result.updated) + " component(s); " +
+                        std::to_string(result.failed) + " failed, " +
+                        std::to_string(result.skipped) + " skipped");
+        }
+        return;
+    }
+
+    const auto id = operation->ids[operation->next_id++];
+    auto pending = std::make_shared<PendingComponentUpdate>();
+    App::Push<ui::ProgressBox>(
+        0, "Preparing", id,
+        [pending, id](auto progress) -> Result {
+            return StageSelectedComponent(progress, id, *pending);
+        },
+        [operation, pending](Result rc) {
+            if (pending->cancelled) {
+                operation->result.cancelled = true;
+                (void)CleanStagingArea();
+                App::Notify("Custom component update cancelled");
+                return;
+            }
+            if (pending->skipped) {
+                ++operation->result.skipped;
+                (void)CleanStagingArea();
+                StartNextSelectedComponent(operation);
+                return;
+            }
+            if (R_FAILED(rc) || !pending->ready) {
+                ++operation->result.failed;
+                (void)CleanStagingArea();
+                StartNextSelectedComponent(operation);
+                return;
+            }
+            auto approved_conflicts = std::make_shared<std::vector<std::string>>();
+            PromptForNextConflict(operation, pending, approved_conflicts, 0);
+        });
 }
 
 Result RunFetchVersions(ui::ProgressBox* progress, FetchVersionsResult& result) {
@@ -1209,28 +1581,10 @@ bool UpdateSelectedComponents(const std::set<std::string>& selected_ids) {
         return false;
     }
 
-    auto result = std::make_shared<UpdateComponentsResult>();
-    App::Push<ui::ProgressBox>(
-        0, "Updating", "Custom components",
-        [result, selected_ids](auto progress) -> Result {
-            return RunUpdateSelectedComponents(progress, selected_ids, *result);
-        },
-        [result](Result rc) {
-            if (result->fatal_error) {
-                App::Notify("Failed to update custom components");
-            } else if (result->updated == 0 && result->failed == 0) {
-                App::Notify("No selected custom components have an available update");
-            } else if (R_SUCCEEDED(rc)) {
-                App::Notify("Updated " + std::to_string(result->updated) +
-                            " custom component(s); " + std::to_string(result->skipped) + " skipped");
-            } else {
-                App::Notify("Updated " + std::to_string(result->updated) + " of " +
-                            std::to_string(result->total) + " component(s); " +
-                            std::to_string(result->failed) + " failed, " +
-                            std::to_string(result->skipped) + " skipped" +
-                            (result->cancelled ? " (cancelled)" : ""));
-            }
-        });
+    auto operation = std::make_shared<UpdateOperation>();
+    operation->ids.assign(selected_ids.begin(), selected_ids.end());
+    operation->result.total = operation->ids.size();
+    StartNextSelectedComponent(operation);
     return true;
 }
 
