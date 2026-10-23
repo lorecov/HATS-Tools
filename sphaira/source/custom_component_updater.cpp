@@ -16,6 +16,9 @@ std::string FormatManifestVersion(const std::string& current_version, const std:
     if (installed_version.empty()) {
         installed_version = "not installed";
     }
+    if (installed_version != "not installed" && installed_version == latest_version) {
+        return installed_version;
+    }
     return installed_version + std::string{separator} + latest_version;
 }
 
