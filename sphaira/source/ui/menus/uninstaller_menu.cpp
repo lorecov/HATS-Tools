@@ -361,7 +361,7 @@ void UninstallerMenu::Draw(NVGcontext* vg, Theme* theme) {
 void UninstallerMenu::OnFocusGained() {
     MenuBase::OnFocusGained();
 
-    if (!m_loaded) {
+    if (!m_loaded || m_tab == ComponentTab::Custom) {
         LoadComponents();
     }
 }
