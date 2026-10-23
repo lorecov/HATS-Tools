@@ -53,14 +53,20 @@ struct Catalog {
     std::map<std::string, CustomComponent> components;
 };
 
+// Location of the custom component catalog on the SD card.
 inline constexpr char CATALOG_PATH[] = "/config/hats-tools/custom-components/manager/components.json";
 
+// Loads or saves the complete catalog.
 bool LoadCatalog(Catalog& out);
 bool SaveCatalog(const Catalog& catalog);
+
+// Adds, loads, updates, or removes components in the on-disk catalog.
 bool AddComponent(const CustomComponent& component, const std::vector<AssetPattern>& assets);
 bool LoadComponent(const std::string& id, CustomComponent& component, std::vector<AssetPattern>& assets);
 bool UpdateComponent(const std::string& id, const CustomComponent& component, const std::vector<AssetPattern>& assets);
 bool RemoveComponentsFromCatalog(const std::vector<std::string>& ids);
+
+// Reads release metadata and persists fetched latest versions.
 bool LoadGitHubVersionEntries(std::vector<GitHubVersionEntry>& entries);
 bool SaveLatestVersions(const std::map<std::string, std::string>& versions);
 

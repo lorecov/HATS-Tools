@@ -64,18 +64,6 @@ bool read_string(yyjson_val* object, const char* key, std::string& out) {
     return true;
 }
 
-bool read_bool(yyjson_val* object, const char* key, bool& out) {
-    auto* value = yyjson_obj_get(object, key);
-    if (!value) {
-        return true;
-    }
-    if (!yyjson_is_bool(value)) {
-        return false;
-    }
-    out = yyjson_get_bool(value);
-    return true;
-}
-
 bool read_string_array(yyjson_val* value, std::vector<std::string>& out) {
     if (!yyjson_is_arr(value)) {
         return false;
@@ -463,6 +451,29 @@ bool SaveCatalog(const Catalog& catalog) {
     return true;
 }
 
+CustomComponent* FindComponent(Catalog& catalog, const std::string& id) {
+    const auto it = catalog.components.find(id);
+    return it != catalog.components.end() ? &it->second : nullptr;
+}
+
+const CustomComponent* FindComponent(const Catalog& catalog, const std::string& id) {
+    const auto it = catalog.components.find(id);
+    return it != catalog.components.end() ? &it->second : nullptr;
+}
+
+bool UpsertComponent(Catalog& catalog, CustomComponent component) {
+    if (component.id.empty()) {
+        return false;
+    }
+    const auto id = component.id;
+    catalog.components.insert_or_assign(id, std::move(component));
+    return true;
+}
+
+bool RemoveComponent(Catalog& catalog, const std::string& id) {
+    return catalog.components.erase(id) != 0;
+}
+
 bool AddComponent(const CustomComponent& component, const std::vector<AssetPattern>& assets) {
     if (component.id.empty() ||
         (component.source_type != "github_release" && component.source_type != "direct_url") ||
@@ -754,29 +765,6 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
         return false;
     }
     return true;
-}
-
-CustomComponent* FindComponent(Catalog& catalog, const std::string& id) {
-    const auto it = catalog.components.find(id);
-    return it != catalog.components.end() ? &it->second : nullptr;
-}
-
-const CustomComponent* FindComponent(const Catalog& catalog, const std::string& id) {
-    const auto it = catalog.components.find(id);
-    return it != catalog.components.end() ? &it->second : nullptr;
-}
-
-bool UpsertComponent(Catalog& catalog, CustomComponent component) {
-    if (component.id.empty()) {
-        return false;
-    }
-    const auto id = component.id;
-    catalog.components.insert_or_assign(id, std::move(component));
-    return true;
-}
-
-bool RemoveComponent(Catalog& catalog, const std::string& id) {
-    return catalog.components.erase(id) != 0;
 }
 
 } // namespace sphaira::custom::catalog

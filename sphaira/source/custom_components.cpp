@@ -37,8 +37,9 @@ struct FetchVersionsResult {
 };
 
 struct UpdateOperation {
-    std::vector<std::string> ids;
-    size_t next_id{};
+    // Updates run sequentially because each component reuses the same staging directory.
+    std::vector<std::string> component_ids;
+    size_t next_component_index{};
     size_t updated{};
     size_t failed{};
     size_t skipped{};
@@ -190,6 +191,7 @@ char FoldCharacter(char character) {
     return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
 }
 
+// Matches asset names case-insensitively with *, ?, and character classes.
 bool AssetPatternMatches(std::string_view pattern, std::string_view value) {
     const auto match_class = [pattern](size_t start, char character, size_t& next) {
         const auto close = pattern.find(']', start + 1);
@@ -388,7 +390,7 @@ void StartProcessDownloadedComponent(
 }
 
 void StartNextUpdate(const std::shared_ptr<UpdateOperation>& operation) {
-    if (operation->next_id >= operation->ids.size()) {
+    if (operation->next_component_index >= operation->component_ids.size()) {
         if (operation->fatal_error) {
             App::Notify("Custom component update failed; check the temporary backup folder");
         } else {
@@ -399,7 +401,7 @@ void StartNextUpdate(const std::shared_ptr<UpdateOperation>& operation) {
         return;
     }
 
-    const auto id = operation->ids[operation->next_id++];
+    const auto id = operation->component_ids[operation->next_component_index++];
     auto downloaded_assets = std::make_shared<std::vector<updater::DownloadedAsset>>();
     auto skipped = std::make_shared<bool>(false);
     App::Push<ui::ProgressBox>(
@@ -519,7 +521,7 @@ bool UpdateSelectedComponents(const std::set<std::string>& selected_ids) {
         return false;
     }
     auto operation = std::make_shared<UpdateOperation>();
-    operation->ids.assign(selected_ids.begin(), selected_ids.end());
+    operation->component_ids.assign(selected_ids.begin(), selected_ids.end());
     StartNextUpdate(operation);
     return true;
 }

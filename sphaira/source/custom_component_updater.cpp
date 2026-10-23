@@ -35,6 +35,7 @@ std::string FormatManifestVersion(const std::string& current_version, const std:
 }
 
 bool NormalizeRelativePath(std::string path, std::string& normalized) {
+    // Archive paths must not escape the staging or destination root.
     std::replace(path.begin(), path.end(), '\\', '/');
     if (path.find(':') != std::string::npos) {
         return false;
@@ -319,6 +320,7 @@ Result ProcessAsset(
     std::vector<catalog::ProcessingStep> default_steps;
     const auto* steps = &configured_steps;
     if (steps->empty()) {
+        // Assets without explicit steps are treated as archives extracted to the root.
         default_steps.emplace_back();
         steps = &default_steps;
     }
@@ -537,10 +539,13 @@ Result EnumerateStagedFiles(fs::Fs* filesystem, const fs::FsPath& output_root, s
     R_SUCCEED();
 }
 
-bool GetComponentDestination(const PreparedComponentUpdate& pending, const std::string& relative, fs::FsPath& path) {
-    if (pending.is_disabled) {
+bool GetComponentDestination(
+    const PreparedComponentUpdate& prepared_update,
+    const std::string& relative,
+    fs::FsPath& path) {
+    if (prepared_update.is_disabled) {
         return MakeFsPath(
-            JoinPath(JoinPath(manifest::DISABLED_COMPONENTS_DIR_CUSTOM, pending.id), relative), path);
+            JoinPath(JoinPath(manifest::DISABLED_COMPONENTS_DIR_CUSTOM, prepared_update.id), relative), path);
     }
     return MakeFsPath("/" + relative, path);
 }
@@ -603,6 +608,7 @@ bool InstallComponentFiles(
         backups.push_back({original, backup, false});
     }
 
+    // Move approved collisions aside before copying any staged files.
     for (const auto& conflict : approved_conflicts) {
         if (PathIsShared(id, conflict, active, disabled)) {
             return false;
@@ -663,6 +669,7 @@ bool RollbackComponentFiles(
     const std::vector<FileMove>& backups,
     const std::vector<fs::FsPath>& installed_files) {
     bool success = true;
+    // Remove newly installed files first, then restore backups in reverse order.
     for (auto it = installed_files.rbegin(); it != installed_files.rend(); ++it) {
         if (filesystem->FileExists(*it)) {
             success &= R_SUCCEEDED(filesystem->DeleteFile(*it));
@@ -679,7 +686,7 @@ bool RollbackComponentFiles(
 
 Result InstallPreparedComponentImpl(
     ui::ProgressBox* progress,
-    PreparedComponentUpdate& pending,
+    PreparedComponentUpdate& prepared_update,
     const std::vector<std::string>& approved_conflicts) {
     auto* app = App::GetApp();
     if (!app || !app->m_fs) {
@@ -699,7 +706,7 @@ Result InstallPreparedComponentImpl(
         return 0x1;
     }
     fs::FsPath backup_root;
-    if (!MakeFsPath(JoinPath(backup_base.s, pending.id), backup_root) ||
+    if (!MakeFsPath(JoinPath(backup_base.s, prepared_update.id), backup_root) ||
         filesystem->DirExists(backup_root) ||
         R_FAILED(filesystem->CreateDirectoryRecursively(backup_root))) {
         return 0x1;
@@ -707,30 +714,30 @@ Result InstallPreparedComponentImpl(
 
     catalog::CustomComponent original_component;
     std::vector<catalog::AssetPattern> current_assets;
-    if (!catalog::LoadComponent(pending.id, original_component, current_assets)) {
+    if (!catalog::LoadComponent(prepared_update.id, original_component, current_assets)) {
         filesystem->DeleteDirectoryRecursively(backup_root);
         return 0x1;
     }
 
-    auto manifest_component = pending.is_disabled
-        ? disabled.components.find(pending.id)
-        : active.components.find(pending.id);
-    if ((pending.is_disabled && manifest_component == disabled.components.end()) ||
-        (!pending.is_disabled && manifest_component == active.components.end())) {
+    auto manifest_entry = prepared_update.is_disabled
+        ? disabled.components.find(prepared_update.id)
+        : active.components.find(prepared_update.id);
+    if ((prepared_update.is_disabled && manifest_entry == disabled.components.end()) ||
+        (!prepared_update.is_disabled && manifest_entry == active.components.end())) {
         filesystem->DeleteDirectoryRecursively(backup_root);
         return 0x1;
     }
     const auto previous_active = active;
     const auto previous_disabled = disabled;
-    const auto previous_manifest_component = manifest_component->second;
+    const auto previous_manifest_component = manifest_entry->second;
 
     std::vector<std::string> new_manifest_files;
     std::vector<FileMove> backups;
     std::vector<fs::FsPath> installed_files;
     const std::set<std::string> approved(approved_conflicts.begin(), approved_conflicts.end());
-    if (!InstallComponentFiles(progress, filesystem, pending.id, pending.staged_files,
+    if (!InstallComponentFiles(progress, filesystem, prepared_update.id, prepared_update.staged_files,
                                active, disabled, previous_manifest_component,
-                               pending.is_disabled, approved, new_manifest_files,
+                               prepared_update.is_disabled, approved, new_manifest_files,
                                backups, installed_files, backup_root)) {
         const bool restored = RollbackComponentFiles(filesystem, backups, installed_files);
         if (!restored) {
@@ -740,26 +747,26 @@ Result InstallPreparedComponentImpl(
         return R_SUCCEEDED(cleanup) ? 0x1 : 0x2;
     }
 
-    auto& updated_component = pending.is_disabled
-        ? disabled.components.at(pending.id)
-        : active.components.at(pending.id);
-    updated_component.name = pending.component.name;
-    updated_component.version = pending.component.latest_version;
-    updated_component.category = pending.component.category;
-    updated_component.repo = pending.component.repo;
+    auto& updated_component = prepared_update.is_disabled
+        ? disabled.components.at(prepared_update.id)
+        : active.components.at(prepared_update.id);
+    updated_component.name = prepared_update.component.name;
+    updated_component.version = prepared_update.component.latest_version;
+    updated_component.category = prepared_update.component.category;
+    updated_component.repo = prepared_update.component.repo;
     updated_component.files = std::move(new_manifest_files);
-    pending.component.version = pending.component.latest_version;
+    prepared_update.component.version = prepared_update.component.latest_version;
 
-    const bool manifest_saved = pending.is_disabled
+    const bool manifest_saved = prepared_update.is_disabled
         ? manifest::saveDisabled(disabled, true)
         : manifest::save(active, true);
     const bool catalog_saved = manifest_saved &&
-        catalog::UpdateComponent(pending.id, pending.component, pending.assets);
+        catalog::UpdateComponent(prepared_update.id, prepared_update.component, prepared_update.assets);
     if (!manifest_saved || !catalog_saved) {
-        bool restored = pending.is_disabled
+        bool restored = prepared_update.is_disabled
             ? manifest::saveDisabled(previous_disabled, true)
             : manifest::save(previous_active, true);
-        restored &= catalog::UpdateComponent(pending.id, original_component, current_assets);
+        restored &= catalog::UpdateComponent(prepared_update.id, original_component, current_assets);
         restored &= RollbackComponentFiles(filesystem, backups, installed_files);
         if (!restored) {
             return 0x2;
@@ -918,6 +925,7 @@ bool ApplyFetchedVersions(
         }
     }
 
+    // Restore saved manifests if a later catalog write fails.
     if (manifest_changed && !manifest::save(custom_manifest, true)) {
         (void)manifest::save(original_manifest, true);
         return false;

@@ -5,8 +5,8 @@
 #include "manifest.hpp"
 #include "ui/progress_box.hpp"
 
+#include <cstddef>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -33,17 +33,20 @@ struct PreparedComponentUpdate {
     std::vector<std::string> conflicts;
 };
 
+// Processes downloaded assets into staged files and discovers destination conflicts.
 Result ProcessDownloadedComponent(
     ui::ProgressBox* progress,
     const std::string& id,
     const std::vector<DownloadedAsset>& downloaded_assets,
     PreparedComponentUpdate& prepared);
 
+// Installs staged files and records them in the active or disabled manifest.
 Result InstallPreparedComponent(
     ui::ProgressBox* progress,
     PreparedComponentUpdate& prepared,
     const std::vector<std::string>& approved_conflicts);
 
+// Applies release versions already fetched by the network coordinator.
 bool ApplyFetchedVersions(
     const std::map<std::string, std::string>& latest_versions,
     const std::map<std::string, std::string>& previous_versions,

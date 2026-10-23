@@ -3,30 +3,25 @@
 #include "custom_catalog.hpp"
 #include "manifest.hpp"
 
-#include <string>
 #include <map>
 #include <set>
+#include <string>
 
 namespace sphaira::custom {
 
-// 1. Fetch Versions (Check Updates)
-// Prende l'elenco dei componenti custom e verifica aggiornamenti remoti
+// Fetches the latest GitHub release versions for catalog components.
 bool FetchVersions(const std::map<std::string, manifest::Component>& components);
 
-// 2. Update All Components
-// Aggiorna tutti i componenti presenti nel manifest custom
+// Updates every custom component listed in the manifest.
 bool UpdateAllComponents(const std::map<std::string, manifest::Component>& components);
 
-// 3. Update Selected Components
-// Riceve la lista degli ID selezionati dall'utente (m_selected_ids) e li aggiorna
+// Updates the custom components identified by their catalog IDs.
 bool UpdateSelectedComponents(const std::set<std::string>& selected_ids);
 
-// 4. Add New Component
-// Apre o avvia il flusso per aggiungere un nuovo componente custom
+// Opens the custom component editor for a new component.
 bool AddNewComponent();
 
-// 5. Modify Selected Component
-// Riceve l'ID del singolo componente selezionato e permette di modificarne le impostazioni
+// Opens the custom component editor for an existing component.
 bool ModifySelectedComponent(const std::string& component_id);
 
 bool EnsureDirectories();

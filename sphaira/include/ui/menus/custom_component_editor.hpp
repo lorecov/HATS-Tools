@@ -14,6 +14,7 @@ namespace sphaira::ui::menu::hats {
 
 namespace catalog = ::sphaira::custom::catalog;
 
+// Holds editor changes until the save callback accepts the draft.
 struct CustomComponentEditorDraft {
     struct Asset {
         std::string pattern;
@@ -44,6 +45,7 @@ private:
     void EditText(std::string& value, const std::string& title);
     void DrawStep(NVGcontext* vg, Theme* theme, const Vec4& rect, size_t index) const;
 
+    // The target is updated only after the working copy is saved.
     std::vector<catalog::ProcessingStep>& m_target_steps;
     std::vector<catalog::ProcessingStep> m_steps;
     std::unique_ptr<List> m_list;
