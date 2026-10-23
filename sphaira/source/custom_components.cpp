@@ -497,13 +497,17 @@ bool FetchVersions(const std::map<std::string, manifest::Component>&) {
     return true;
 }
 
-bool UpdateAllComponents(const std::map<std::string, manifest::Component>&) {
-    if (!EnsureDirectories() || !EnsureCatalogExists()) {
+bool UpdateAllComponents(const std::map<std::string, manifest::Component>& components) {
+    if (components.empty()) {
+        App::Notify("No custom components available.");
         return false;
     }
 
-    App::Notify("Update All Components (Stub)");
-    return true;
+    std::set<std::string> component_ids;
+    for (const auto& [id, _] : components) {
+        component_ids.insert(id);
+    }
+    return UpdateSelectedComponents(component_ids);
 }
 
 bool UpdateSelectedComponents(const std::set<std::string>& selected_ids) {
