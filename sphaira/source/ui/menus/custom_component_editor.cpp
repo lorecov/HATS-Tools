@@ -1,6 +1,6 @@
 
 #include "ui/menus/custom_component_editor.hpp"
-#include "ui/menus/custom_component_editor_utils.hpp"
+#include "custom_component_editor_utils.hpp"
 #include "ui/menus/custom_component_processing_steps_editor.hpp"
 #include "ui/nvg_util.hpp"
 #include "ui/option_box.hpp"
