@@ -931,7 +931,7 @@ bool InstallComponentFiles(
     }
 
     for (const auto& conflict : approved_conflicts) {
-        if (PathIsShared(pending.id, conflict, active, disabled)) {
+        if (PathIsShared(id, conflict, active, disabled)) {
             return false;
         }
         fs::FsPath original;
