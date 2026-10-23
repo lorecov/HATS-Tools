@@ -132,7 +132,7 @@ private:
     std::string m_title;
     std::unique_ptr<List> m_list;
     s64 m_index{};
-}
+};
 
 } // namespace
 
