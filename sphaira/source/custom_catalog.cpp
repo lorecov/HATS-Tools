@@ -716,6 +716,44 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
         return false;
     }
 
+    struct VersionMetadata {
+        bool has_version{};
+        std::string version;
+    };
+    std::map<std::string, VersionMetadata> metadata;
+    for (const auto& [id, _] : versions) {
+        auto* component = yyjson_obj_get(existing_root, id.c_str());
+        if (!yyjson_is_obj(component)) {
+            log_write("[CUSTOM_COMPONENTS] component '%s' missing or invalid while saving latest version\n", id.c_str());
+            return false;
+        }
+
+        VersionMetadata entry;
+        auto* asset_info = yyjson_obj_get(component, "asset_info");
+        if (asset_info) {
+            if (!yyjson_is_obj(asset_info)) {
+                log_write("[CUSTOM_COMPONENTS] invalid asset_info for component '%s'\n", id.c_str());
+                return false;
+            }
+            auto* current_version = yyjson_obj_get(asset_info, "version");
+            if (current_version) {
+                if (!yyjson_is_str(current_version)) {
+                    log_write("[CUSTOM_COMPONENTS] invalid version metadata for component '%s'\n", id.c_str());
+                    return false;
+                }
+                entry.has_version = true;
+                entry.version = yyjson_get_str(current_version);
+            }
+        } else {
+            auto* current_version = yyjson_obj_get(component, "version");
+            if (current_version && yyjson_is_str(current_version)) {
+                entry.has_version = true;
+                entry.version = yyjson_get_str(current_version);
+            }
+        }
+        metadata.emplace(id, std::move(entry));
+    }
+
     auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
     if (!doc) {
         log_write("[CUSTOM_COMPONENTS] failed to copy catalog before saving latest versions\n");
@@ -726,11 +764,6 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
     auto* root = yyjson_mut_doc_get_root(doc);
     for (const auto& [id, version] : versions) {
         auto* component = yyjson_mut_obj_get(root, id.c_str());
-        if (!yyjson_is_obj(component)) {
-            log_write("[CUSTOM_COMPONENTS] component '%s' missing while saving latest version\n", id.c_str());
-            return false;
-        }
-
         auto* asset_info = yyjson_mut_obj_get(component, "asset_info");
         if (!asset_info) {
             asset_info = yyjson_mut_obj(doc);
@@ -738,18 +771,15 @@ bool SaveLatestVersions(const std::map<std::string, std::string>& versions) {
                 log_write("[CUSTOM_COMPONENTS] failed to allocate version metadata for '%s'\n", id.c_str());
                 return false;
             }
-            if (auto* old_version = yyjson_mut_obj_get(component, "version");
-                old_version && yyjson_is_str(old_version)) {
-                if (!yyjson_mut_obj_add_str(doc, asset_info, "version", yyjson_get_str(old_version))) {
+            const auto& old_metadata = metadata.at(id);
+            if (old_metadata.has_version) {
+                if (!yyjson_mut_obj_add_str(doc, asset_info, "version", old_metadata.version.c_str())) {
                     return false;
                 }
             }
             if (!yyjson_mut_obj_add_val(doc, component, "asset_info", asset_info)) {
                 return false;
             }
-        } else if (!yyjson_is_obj(asset_info)) {
-            log_write("[CUSTOM_COMPONENTS] invalid asset_info for component '%s'\n", id.c_str());
-            return false;
         }
 
         yyjson_mut_obj_remove_str(asset_info, "latest_version");
