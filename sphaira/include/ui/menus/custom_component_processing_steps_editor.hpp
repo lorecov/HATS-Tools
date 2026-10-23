@@ -9,6 +9,8 @@
 
 namespace sphaira::ui::menu::hats {
 
+namespace catalog = ::sphaira::custom::catalog;
+
 struct CustomComponentProcessingStepsEditor final : MenuBase {
     explicit CustomComponentProcessingStepsEditor(std::vector<catalog::ProcessingStep>& steps, std::string title);
 
