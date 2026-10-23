@@ -839,7 +839,7 @@ Result RunUpdateSelectedComponents(
         result.fatal_error = true;
         return 0x1;
     }
-    auto* filesystem = app->m_fs;
+    auto* filesystem = app->m_fs.get();
 
     manifest::Manifest active;
     if (!manifest::load(active, true)) {
