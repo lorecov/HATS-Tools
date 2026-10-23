@@ -131,8 +131,16 @@ add_executable(hats-tools
     source/hats_version.cpp
     source/manifest.cpp
     source/custom_catalog.cpp
+    source/custom_catalog_json.cpp
     source/custom_components.cpp
     source/custom_component_updater.cpp
+    source/custom_component_update_utils.cpp
+    source/custom_component_processor.cpp
+    source/custom_component_installer.cpp
+    source/custom_component_github.cpp
+    source/custom_component_update_workflow.cpp
+    source/custom_component_storage.cpp
+    source/ui/menus/custom_component_processing_steps_editor.cpp
     source/nxlink.cpp
     source/owo.cpp
     source/swkbd.cpp
