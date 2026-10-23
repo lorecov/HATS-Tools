@@ -2,6 +2,7 @@
 
 #include "custom_component_storage.hpp"
 #include "custom_catalog_json.hpp"
+#include "defines.hpp"
 
 #include <utility>
 #include <yyjson.h>
