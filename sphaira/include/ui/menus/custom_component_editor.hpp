@@ -53,7 +53,11 @@ private:
 struct CustomComponentEditor final : MenuBase {
     using SaveCallback = std::function<bool(const CustomComponentEditorDraft&)>;
 
-    explicit CustomComponentEditor(catalog::CustomComponent component = {}, bool is_new = true, SaveCallback on_save = {});
+    explicit CustomComponentEditor(
+        catalog::CustomComponent component = {},
+        bool is_new = true,
+        SaveCallback on_save = {},
+        std::vector<CustomComponentEditorDraft::Asset> assets = {});
 
     auto GetShortTitle() const -> const char* override { return "Component Editor"; }
     void Update(Controller* controller, TouchInfo* touch) override;

@@ -474,16 +474,23 @@ void CustomComponentProcessingStepsEditor::EditText(std::string& value, const st
     }
 }
 
-CustomComponentEditor::CustomComponentEditor(catalog::CustomComponent component, bool is_new, SaveCallback on_save)
+CustomComponentEditor::CustomComponentEditor(
+    catalog::CustomComponent component,
+    bool is_new,
+    SaveCallback on_save,
+    std::vector<CustomComponentEditorDraft::Asset> assets)
     : MenuBase{is_new ? "Add Custom Component" : "Edit Custom Component", MenuFlag_None}
     , m_component{std::move(component)}
+    , m_assets{std::move(assets)}
     , m_on_save{std::move(on_save)} {
     if (m_component.source_type.empty()) {
         m_component.source_type = "github_release";
     }
 
-    for (const auto& pattern : m_component.asset_patterns) {
-        m_assets.push_back({pattern, {}});
+    if (m_assets.empty()) {
+        for (const auto& pattern : m_component.asset_patterns) {
+            m_assets.push_back({pattern, {}});
+        }
     }
     if (!m_component.processing_steps.empty()) {
         if (m_component.source_type == "direct_url") {

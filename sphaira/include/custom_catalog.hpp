@@ -51,6 +51,8 @@ inline constexpr char CATALOG_PATH[] = "/config/hats-tools/custom-components/man
 bool LoadCatalog(Catalog& out);
 bool SaveCatalog(const Catalog& catalog);
 bool AddComponent(const CustomComponent& component, const std::vector<AssetPattern>& assets);
+bool LoadComponent(const std::string& id, CustomComponent& component, std::vector<AssetPattern>& assets);
+bool UpdateComponent(const std::string& id, const CustomComponent& component, const std::vector<AssetPattern>& assets);
 bool RemoveComponentsFromCatalog(const std::vector<std::string>& ids);
 
 CustomComponent* FindComponent(Catalog& catalog, const std::string& id);

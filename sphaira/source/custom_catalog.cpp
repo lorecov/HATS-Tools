@@ -143,6 +143,102 @@ bool read_component(yyjson_val* value, CustomComponent& component) {
     return true;
 }
 
+bool read_action_steps(yyjson_val* value, std::vector<ProcessingStep>& steps) {
+    if (!yyjson_is_arr(value)) {
+        return false;
+    }
+
+    size_t index, max;
+    yyjson_val* item;
+    yyjson_arr_foreach(value, index, max, item) {
+        if (!yyjson_is_obj(item)) {
+            return false;
+        }
+
+        ProcessingStep step;
+        std::string action;
+        if (!read_string(item, "action", action) ||
+            !step_type_from_string(action.c_str(), step.type)) {
+            return false;
+        }
+
+        if (step.type == StepType::DeleteFile) {
+            if (!read_string(item, "path", step.target_path)) {
+                return false;
+            }
+        } else if (!read_string(item, "target_path", step.target_path)) {
+            return false;
+        }
+
+        if (!read_string(item, "subfolder_name", step.subfolder_name) ||
+            !read_string(item, "source_file_pattern", step.source_file_pattern) ||
+            !read_string(item, "target_filename", step.target_filename)) {
+            return false;
+        }
+        steps.emplace_back(std::move(step));
+    }
+    return true;
+}
+
+bool read_editable_component(
+    const char* id,
+    yyjson_val* value,
+    CustomComponent& component,
+    std::vector<AssetPattern>& assets) {
+    if (!yyjson_is_obj(value)) {
+        return false;
+    }
+
+    component.id = id;
+    if (!read_string(value, "name", component.name) ||
+        !read_string(value, "description", component.description) ||
+        !read_string(value, "category", component.category) ||
+        !read_string(value, "source_type", component.source_type) ||
+        !read_string(value, "repo", component.repo)) {
+        return false;
+    }
+
+    if (auto* asset_info = yyjson_obj_get(value, "asset_info")) {
+        if (!read_string(asset_info, "version", component.version)) {
+            return false;
+        }
+    } else if (!read_string(value, "version", component.version)) {
+        return false;
+    }
+
+    if (component.source_type == "github_release") {
+        auto* patterns = yyjson_obj_get(value, "asset_patterns");
+        if (!yyjson_is_arr(patterns)) {
+            return false;
+        }
+        size_t index, max;
+        yyjson_val* pattern_value;
+        yyjson_arr_foreach(patterns, index, max, pattern_value) {
+            if (!yyjson_is_obj(pattern_value)) {
+                return false;
+            }
+            AssetPattern asset;
+            if (!read_string(pattern_value, "pattern", asset.pattern)) {
+                return false;
+            }
+            auto* steps = yyjson_obj_get(pattern_value, "processing_steps");
+            if (!read_action_steps(steps, asset.processing_steps)) {
+                return false;
+            }
+            component.asset_patterns.push_back(asset.pattern);
+            assets.emplace_back(std::move(asset));
+        }
+    } else if (component.source_type == "direct_url") {
+        auto* steps = yyjson_obj_get(value, "processing_steps");
+        if (!read_action_steps(steps, component.processing_steps)) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+    return true;
+}
+
 yyjson_mut_val* component_to_json(yyjson_mut_doc* doc, const CustomComponent& component) {
     auto* value = yyjson_mut_obj(doc);
     if (!value ||
@@ -424,6 +520,88 @@ bool AddComponent(const CustomComponent& component, const std::vector<AssetPatte
     yyjson_write_err err{};
     if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
         log_write("[CUSTOM_COMPONENTS] failed to add component to %s: %s\n", CATALOG_PATH, err.msg);
+        return false;
+    }
+    return true;
+}
+
+bool LoadComponent(const std::string& id, CustomComponent& component, std::vector<AssetPattern>& assets) {
+    auto* doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
+    if (!doc) {
+        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s\n", CATALOG_PATH);
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_doc_free(doc));
+
+    auto* root = yyjson_doc_get_root(doc);
+    if (!yyjson_is_obj(root)) {
+        log_write("[CUSTOM_COMPONENTS] invalid catalog root in %s\n", CATALOG_PATH);
+        return false;
+    }
+
+    auto* value = yyjson_obj_get(root, id.c_str());
+    if (!value) {
+        log_write("[CUSTOM_COMPONENTS] component '%s' not found in catalog\n", id.c_str());
+        return false;
+    }
+
+    CustomComponent loaded_component;
+    std::vector<AssetPattern> loaded_assets;
+    if (!read_editable_component(id.c_str(), value, loaded_component, loaded_assets)) {
+        log_write("[CUSTOM_COMPONENTS] invalid catalog component '%s'\n", id.c_str());
+        return false;
+    }
+    component = std::move(loaded_component);
+    assets = std::move(loaded_assets);
+    return true;
+}
+
+bool UpdateComponent(
+    const std::string& id,
+    const CustomComponent& component,
+    const std::vector<AssetPattern>& assets) {
+    if (id.empty() || component.id.empty() ||
+        (component.source_type != "github_release" && component.source_type != "direct_url") ||
+        (component.source_type == "github_release" && assets.empty())) {
+        log_write("[CUSTOM_COMPONENTS] invalid component data for catalog update\n");
+        return false;
+    }
+
+    auto* existing_doc = yyjson_read_file(CATALOG_PATH, YYJSON_READ_NOFLAG, nullptr, nullptr);
+    if (!existing_doc) {
+        log_write("[CUSTOM_COMPONENTS] failed to read catalog %s before updating component\n", CATALOG_PATH);
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_doc_free(existing_doc));
+
+    auto* existing_root = yyjson_doc_get_root(existing_doc);
+    if (!yyjson_is_obj(existing_root) || !yyjson_obj_get(existing_root, id.c_str())) {
+        log_write("[CUSTOM_COMPONENTS] component '%s' not found for catalog update\n", id.c_str());
+        return false;
+    }
+    if (id != component.id && yyjson_obj_get(existing_root, component.id.c_str())) {
+        log_write("[CUSTOM_COMPONENTS] component '%s' already exists\n", component.id.c_str());
+        return false;
+    }
+
+    auto* doc = yyjson_doc_mut_copy(existing_doc, nullptr);
+    if (!doc) {
+        log_write("[CUSTOM_COMPONENTS] failed to copy catalog before updating component\n");
+        return false;
+    }
+    ON_SCOPE_EXIT(yyjson_mut_doc_free(doc));
+
+    auto* root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_obj_remove_str(root, id.c_str());
+    auto* value = new_component_to_json(doc, component, assets);
+    if (!value || !yyjson_mut_obj_add_val(doc, root, component.id.c_str(), value)) {
+        log_write("[CUSTOM_COMPONENTS] failed to serialize updated component '%s'\n", component.id.c_str());
+        return false;
+    }
+
+    yyjson_write_err err{};
+    if (!yyjson_mut_write_file(CATALOG_PATH, doc, YYJSON_WRITE_PRETTY, nullptr, &err)) {
+        log_write("[CUSTOM_COMPONENTS] failed to update component in %s: %s\n", CATALOG_PATH, err.msg);
         return false;
     }
     return true;
